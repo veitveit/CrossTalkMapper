@@ -4,6 +4,8 @@ CrossTalkMapper is a flexible toolkit to visualize multi-layered quantitative po
 
 ## Citation
 
+Visualization of the Dynamics of Histone Modifications and Their Crosstalk Using *CrossTalkMapper*. Rebecca Kirsch, Ole N. Jensen, Veit Schwämmle. Manuscript in preparation.
+
 ## Requirements
 
 * R installation (see https://www.r-project.org/)
