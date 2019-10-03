@@ -2,7 +2,7 @@
 ## Mouse Tissues Dataset ##
 ###########################
 
-# published: Accumulation of histone variant H3.3 with age is associated with profound changes in the histone methylation landscape
+# published in: Tvardovskiy, A., Schwämmle, V., Kempf, S. J., Rogowska-Wrzesinska, A., & Jensen, O. N. (2017). Accumulation of histone variant H3.3 with age is associated with profound changes in the histone methylation landscape. Nucleic Acids Research, 45(16), 9272–9289.
 # 4 tissues (brain, heart, liver, kidney)
 # 5 time points (3, 5, 10, 18, 24 months)
 # 2-4 biological replicates (3, 5, 10 months: 4 replicates for each tissue and time point, 18 + 24 months: 2 replicates for each tissue and time point)
