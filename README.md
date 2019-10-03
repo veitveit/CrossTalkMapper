@@ -8,12 +8,12 @@ CrossTalkMapper is a flexible toolkit to visualize multi-layered quantitative po
 
 * R installation (see https://www.r-project.org/)
 * R packages:
- * tidyr
- * tools
- * ggplot2
- * scales
- * ggrepel
- * gridExtra
+  * tidyr
+  * tools
+  * ggplot2
+  * scales
+  * ggrepel
+  * gridExtra
 
 ## Usage
 
@@ -31,6 +31,8 @@ Contains the example dataset downloaded from CrosstalkDB, including an auxiliary
 
 The data file can also be prepared independently from CrosstalkDB. In this case, the data should be provided as .csv file containing the following fields with these exact column names:
 
+Field | Description
+---|---
 "protein name" | e.g. histone variant
 "cell type / tissue" | sample cell type or tissue (or any other condition A)
 "modifications" | PTM code of combinatorial PTM detected, each PTM in the form of <one-letter amino acid code><position number><modification type code>, e.g. K9me2R26me1K27me1
