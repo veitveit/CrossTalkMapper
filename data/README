@@ -21,3 +21,6 @@
 # Kidney:
 # CrDB000114 .. CrDB000129
 perl map-timepoints2CrDB.pl mouse-tissues_ctdb.csv > mouse-tissues_ctdb_timerep.csv
+
+# 24 months samples should not be included in the analysis
+grep -v "24 months" mouse-tissues_ctdb_timerep.csv > mouse-tissues_ctdb_timerep_4timepoints.csv
