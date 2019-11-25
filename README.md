@@ -42,9 +42,9 @@ Field | Description
 "timepoint" | sample time point (or any other condition B)
 "biological replicate" | number of the replicate
 
-### examples/
+### doc/
 
-Example scripts illustrating the workflow for some typical use cases.
+Documentation, including example scripts illustrating the workflow for some typical use cases.
 
 ### mouse-tissue-analysis/
 
