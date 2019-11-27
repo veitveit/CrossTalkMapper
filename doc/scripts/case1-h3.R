@@ -1,5 +1,5 @@
-# assumes working dir to be in case1/
-source("../../ctm-functions/ptm-crosstalkmapper.R")
+# assumes working dir to be in doc/
+source("../ctm-functions/ptm-crosstalkmapper.R")
 
 # Case (1):
 # Histone H3 total, averaged replicates
@@ -8,7 +8,7 @@ source("../../ctm-functions/ptm-crosstalkmapper.R")
 ## Data Pre-Processing ##
 #########################
 
-data <- prepPTMdata("../../data/mouse-tissues_ctdb_timerep_4timepoints.csv", histvars = FALSE, avrepls = TRUE)
+data <- prepPTMdata("../data/mouse-tissues_ctdb_timerep_4timepoints.csv", histvars = FALSE, avrepls = TRUE)
 
 # shorten tissue labels, specific for dataset PXD005300
 data$cell.type...tissue <- gsub(".*, ", "", data$cell.type...tissue)
@@ -19,7 +19,7 @@ data$cell.type...tissue <- paste0(toupper(substr(data$cell.type...tissue, 1, 1))
 ## PTM abundance calculation ##
 ###############################
 
-ptm_ab <- calcPTMab(data, outdir = "h3/data/")
+ptm_ab <- calcPTMab(data, outdir = "data/h3/")
 
 #####################
 ## Filter and plot ##
@@ -44,7 +44,7 @@ for (mi_pos in poi) {
     ## no filter
     CrossTalkMap(ptm_ab_mi, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                  connect_dots = TRUE, with_arrows = TRUE,
-                 filename_string = paste0(mi, "_mj-all"), outdir = "h3/crosstalkmaps/")
+                 filename_string = paste0(mi, "_mj-all"), outdir = "plots/h3/crosstalkmaps")
     
     ## top 10/5 abundant m_j
     # rank m_i data by abundance of m_j, regardless of time point, tissue or histone variant
@@ -59,14 +59,14 @@ for (mi_pos in poi) {
       
       CrossTalkMap(midat_plot, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                    connect_dots = TRUE, with_arrows = TRUE,
-                   filename_string = paste0(mi, "_pj-top-", top), outdir = "h3/crosstalkmaps/")
+                   filename_string = paste0(mi, "_pj-top-", top), outdir = "plots/h3/crosstalkmaps/")
     }
     
     ## line plots for change of abundance over time for each PTM m_i
     mi_dat <- unique(ptm_ab_mi[, c("hist", "tissue", "timepoint", "repl", "mi", "pi")])
     for (tissue in unique(mi_dat$tissue)) {
       mi_dat_tis <- mi_dat[mi_dat$tissue == tissue,]
-      line_ab(mi_dat_tis, outdir = "h3/lineplots_pi/")
+      line_ab(mi_dat_tis, outdir = "plots/h3/lineplots_pi/")
     }
     
     ## line plots for abundances, co-occurrence, interplay score for each tissue, each mimj combination
@@ -74,7 +74,7 @@ for (mi_pos in poi) {
       ptm_ab_mimj <- ptm_ab_mi[ptm_ab_mi$mj == mj,]
       for (tissue in unique(ptm_ab_mimj$tissue)[1]) {
         ptm_ab_mimj_tis <- ptm_ab_mimj[ptm_ab_mimj$tissue == tissue,]
-        line_ct(ptm_ab_mimj_tis, outdir = "h3/lineplots_ct-params/")
+        line_ct(ptm_ab_mimj_tis, outdir = "plots/h3/lineplots_ct-params/")
       }
     }
     
@@ -94,13 +94,13 @@ for (pos_comb in pos_combs) {
   ptm_ab_pos <- ptm_ab[grepl(pos_comb[[1]], ptm_ab$mi) & grepl(pos_comb[[2]], ptm_ab$mj),]
   CrossTalkMap(ptm_ab_pos, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                connect_dots = TRUE, with_arrows = TRUE, which_label = "mimj",
-               filename_string = paste0(paste0(pos_comb, collapse = '-'), "_all-ptms"), outdir = "h3/crosstalkmaps/")
+               filename_string = paste0(paste0(pos_comb, collapse = '-'), "_all-ptms"), outdir = "plots/h3/crosstalkmaps/")
   # only show methylations
   mod <- "me"
   ptm_ab_pos_mod <- ptm_ab_pos[grepl(mod, ptm_ab_pos$mi) & grepl(mod, ptm_ab_pos$mj),]
   if (nrow(ptm_ab_pos_mod) > 0) {
     CrossTalkMap(ptm_ab_pos_mod, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                  connect_dots = TRUE, with_arrows = TRUE, which_label = "mimj",
-                 filename_string = paste0(paste0(pos_comb, collapse = '-'), "_", mod), outdir = "h3/crosstalkmaps/")
+                 filename_string = paste0(paste0(pos_comb, collapse = '-'), "_", mod), outdir = "plots/h3/crosstalkmaps/")
   }
 }
