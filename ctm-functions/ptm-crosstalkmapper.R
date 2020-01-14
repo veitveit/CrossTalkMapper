@@ -375,7 +375,7 @@ add_paths <- function(plot, data, with_arrows) {
   return(plot)
 }
 
-plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_string) {
+plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_string, filename_ext) {
   ## generate multiplot from list of plots, including .tab file of contained data
   ## ptm_data is used to calculate the theoretical number of individual plots, since some in the list might be empty
   
@@ -384,10 +384,6 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
   plotsn <- length(unique(ptm_data$splitplot_by)) * length(unique(ptm_data$hist))
   nrrows <- floor(sqrt(plotsn))
   nrcols <- ceiling(plotsn / nrrows)
-  # calculate width and height of multi plot
-  plotunit <- 6 # each individual plot should be 6x6 cm
-  plotheight <- nrrows * plotunit
-  plotwidth <- nrcols * plotunit
   
   # plot tissues in columns and histone variants in rows --> define layout matrix for grid.arrange()
   if (plotsn == 8) {
@@ -399,36 +395,47 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
   } else if (plotsn == 1) {
     lay <- rbind(1)
   }
+  p <- grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
   
-  # determine histone type for file name
-  if (nrow(ptm_data[grep('\\.', ptm_data$hist),]) > 0) {
-    filename_hist <- "histvars"
+  if (is.null(filename_string)) {
+    # return plot object
+    return(p)
   } else {
-    filename_hist <- "H3"
+    # determine histone type for file name
+    if (nrow(ptm_data[grep('\\.', ptm_data$hist),]) > 0) {
+      filename_hist <- "histvars"
+    } else {
+      filename_hist <- "H3"
+    }
+    
+    # calculate width and height of multi plot
+    plotunit <- 6 # each individual plot should be 6x6 cm
+    plotheight <- nrrows * plotunit
+    plotwidth <- nrcols * plotunit
+    
+    # plot
+    ggsave(filename = paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".", filename_ext), plot = p,
+        width = plotwidth, height = plotheight)
+
+    # print values for all plotted PTMs to file
+    ptm_data_sort <- ptm_data[with(ptm_data, order(hist, tissue, mj, timepoint)),]
+    write.table(ptm_data_sort,
+                paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".tab"),
+                quote = FALSE, sep = "\t", row.names = FALSE)
   }
-  
-  # plot
-  pdf(paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".pdf"),
-      width = plotwidth, height = plotheight)
-  grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
-  dev.off()
-  
-  # print values for all plotted PTMs to file
-  ptm_data_sort <- ptm_data[with(ptm_data, order(hist, tissue, mj, timepoint)),]
-  write.table(ptm_data_sort,
-              paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".tab"),
-              quote = FALSE, sep = "\t", row.names = FALSE)
-  
 }
 
 CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                              connect_dots = TRUE, with_arrows = TRUE, which_label = "mj", hide_axes = TRUE,
-                             filename_string, outdir = getwd()) {
+                             filename_string = NULL, filename_ext = "pdf", outdir = getwd()) {
   ## take data frame with transformed PTM abundances as input
   ## output crosstalk map to outdir
   ## crosstalk maps for all PTM combinations of m_i and m_j contained in the input data frame are plotted
   ## encoding according to splitplot_by, connected, group_by, colcode (see encode())
   ## which_label defines labels for groups of data points: "mj" (default) for individual or "mimj" for combinatorial PTM
+  ## by default, returns plot object
+  ## otherwise, if argument to filename_string is provided, a file name is constructed and a file created
+  ## (default: pdf, otherwise one of "eps", "ps", "tex" (pictex), "jpeg", "tiff", "png", "bmp", "svg" or "wmf", might require additional packages)
   ## filename_string will be attached to the plot file name starting with crosstalkmap_<mi> and to reflect how m_js to plot have been selected
   
   # define start and end for x and y scales based on min and max in pi_hat and pj_hat
@@ -478,7 +485,7 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
   }
 
   # generate multiplot from list of plots, incl .tab of all data points contained in the plot
-  plot_all(plotlist_all, ptm_data, outdir, splitplot_by, filename_string)
+  plot_all(plotlist_all, ptm_data, outdir, splitplot_by, filename_string, filename_ext)
 
 }
 
