@@ -307,8 +307,7 @@ base_plot <- function(raster_df, start, end, hide_axes) {
   p <- ggplot(raster_df, aes(pi_t, pj_t)) +
     coord_cartesian(xlim = c(start, end), ylim = c(start, end)) +
     geom_raster(aes(fill = I)) +
-    scale_fill_gradient2(low = "#ffd27f", mid = "white", high = "#ff7f7f") +
-    geom_abline(slope = -1, intercept = min(raster_df$pi_t), color = "lightgrey") +
+    geom_abline(slope = -1, intercept = min(raster_df$pi_t), color = "lightgray") +
     scale_x_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
     scale_y_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
     theme(axis.text=element_text(size=14),
@@ -336,12 +335,33 @@ add_title <- function(base_plot, mi, cond, hist, which_label) {
   return(p)
 }
 
-add_colscale <- function(base_plot, subgroup_data, all_data, colcode) {
-  # determine which color scale to add for data points based on data type
+add_interplay_col <- function(base_plot, col_scheme = 1) {
+  # determine color scheme for interplay score (plot background), where 1 (default): gray gradient, 2: yellow to red
+  if (col_scheme == 1) {
+    p <- base_plot + scale_fill_gradient2(low = "gray85", mid = "white", high = "gray85")
+  } else if (col_scheme == 2) {
+    p <- base_plot + scale_fill_gradient2(low = "#ffd27f", mid = "white", high = "#ff7f7f")
+  } else {
+    warning("Unknown argument to col_scheme")
+    return()
+  }
+  return(p)
+}
+
+add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_scheme) {
+  # determine which color scale to add for data points based on data type and background color scheme
   if (is.numeric(subgroup_data[,colcode]) == TRUE) {
-    p <- base_plot + scale_color_gradient2(low = "#00BFC4", mid = "#1A2980", high = "#B06AB3",
-                                           limits = c(min(all_data$pj), max(all_data$pj)), midpoint = max(all_data$pj) / 2) +
-      guides(color = guide_colorbar(order = 1), fill = guide_colorbar(order = 2))
+    if (col_scheme == 1) {
+      p <- base_plot + scale_color_gradientn(colours = c("#00BFC4", "#3F5EFB", "#B06AB3", "#FC466B"),
+                                             limits = c(min(all_data$pj), max(all_data$pj)))
+    } else if (col_scheme == 2) {
+      p <- base_plot + scale_color_gradientn(colours = c("#00BFC4", "#1A2980", "#B06AB3"),
+                                             limits = c(min(all_data$pj), max(all_data$pj)))
+    } else {
+      warning("Unknown argument to col_scheme")
+      return()
+    }
+    p <- p + guides(color = guide_colorbar(order = 1), fill = guide_colorbar(order = 2))
   } else {
     p <- base_plot + scale_color_discrete() +
       guides(color = guide_legend(order = 1), fill = guide_colorbar(order = 2))
@@ -426,13 +446,14 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
 }
 
 CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
-                             connect_dots = TRUE, with_arrows = TRUE, which_label = "mj", hide_axes = TRUE,
-                             filename_string = NULL, filename_ext = "pdf", outdir = getwd()) {
+                         connect_dots = TRUE, with_arrows = TRUE, which_label = "mj",
+                         col_scheme = 1, contour_lines = TRUE, hide_axes = TRUE,
+                         filename_string = NULL, filename_ext = "pdf", outdir = getwd()) {
   ## take data frame with transformed PTM abundances as input
-  ## output crosstalk map to outdir
   ## crosstalk maps for all PTM combinations of m_i and m_j contained in the input data frame are plotted
   ## encoding according to splitplot_by, connected, group_by, colcode (see encode())
   ## which_label defines labels for groups of data points: "mj" (default) for individual or "mimj" for combinatorial PTM
+  ## col_scheme determines the color of the interplay score gradient (plot background), where 1 (default): gray scale, 2: yellow to red
   ## by default, returns plot object
   ## otherwise, if argument to filename_string is provided, a file name is constructed and a file created
   ## (default: pdf, otherwise one of "eps", "ps", "tex" (pictex), "jpeg", "tiff", "png", "bmp", "svg" or "wmf", might require additional packages)
@@ -469,8 +490,10 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
       p <- base_plot(raster_df, start, end, hide_axes = hide_axes)
       # add title
       p <- add_title(p, mi, cond, hist, which_label)
+      # add color scale for interplay score / raster plot
+      p <- add_interplay_col(p, col_scheme = col_scheme)
       # determine which color scale to add for data points
-      p <- add_colscale(p, subgroup_data = hist_labeled, ptm_data, colcode)
+      p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
       # add data points and labels
       p <- add_points(p, hist_labeled)
       # add paths between points
@@ -621,5 +644,5 @@ base_breaks <- function(n = 10){
 }
 
 # adjust theme to center plot titles (to set back to default: theme_set(theme_gray()))
-theme_update(panel.background = element_rect(fill = "white", colour = "lightgrey"),
+theme_update(panel.background = element_rect(fill = "white", colour = "lightgray"),
   plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
