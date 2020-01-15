@@ -385,10 +385,10 @@ add_paths <- function(plot, data, with_arrows) {
       mimj_connected <- data[data$mi == mi & data$mj == mj,]
       # if mj present at at least two time points, connect them by arrow (or for replicates by line only)
       if (nrow(mimj_connected) > 1 && with_arrows == TRUE) {
-        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.3,
-                                   arrow = arrow(length = unit(0.15, "cm")))
+        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5,
+                                   arrow = arrow(length = unit(0.18, "cm")))
       } else if (nrow(mimj_connected) > 1 && with_arrows == FALSE) {
-        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.3)
+        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5)
       }
     }
   }
