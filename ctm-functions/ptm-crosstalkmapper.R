@@ -348,6 +348,25 @@ add_interplay_col <- function(base_plot, col_scheme = 1) {
   return(p)
 }
 
+round2wards0 <- function(val, round2closest = 5) {
+  # rounds value to the closest multiple of <round2closest> towards 0 (round up for negative and down for positive values)
+  if (val < 0) {
+    val_rounded <- ceiling(val / round2closest)*round2closest
+  } else {
+    val_rounded <- floor(val / round2closest)*round2closest
+  }
+  return(val_rounded)
+}
+
+add_contours <- function(base_plot, I_data, interval_size = 5) {
+  # add contour lines for interplay score at intervals of 5 (default)
+  imin <- min(I_data$I)
+  imax <- max(I_data$I)
+  p <- base_plot + geom_contour(aes(z = I), show.legend = TRUE, size = 0.25, linetype = "longdash", color = "gray70",
+                                breaks = seq(round2wards0(imin, interval_size), round2wards0(imax, interval_size), interval_size))
+  return(p)
+}
+
 add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_scheme) {
   # determine which color scale to add for data points based on data type and background color scheme
   if (is.numeric(subgroup_data[,colcode]) == TRUE) {
@@ -492,6 +511,10 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
       p <- add_title(p, mi, cond, hist, which_label)
       # add color scale for interplay score / raster plot
       p <- add_interplay_col(p, col_scheme = col_scheme)
+      # add interplay score contour lines
+      if (contour_lines == TRUE) {
+        p <- add_contours(p, raster_df)
+      }
       # determine which color scale to add for data points
       p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
       # add data points and labels
