@@ -358,13 +358,33 @@ round2wards0 <- function(val, round2closest = 5) {
   return(val_rounded)
 }
 
-add_contours <- function(base_plot, I_data, interval_size = 5) {
+add_contours <- function(base_plot, I_data, interval_size = 5, raster_start, raster_end) {
   # add contour lines for interplay score at intervals of 5 (default)
   imin <- min(I_data$I)
   imax <- max(I_data$I)
+  contour_breaks <- seq(round2wards0(imin, interval_size), round2wards0(imax, interval_size), interval_size)
   p <- base_plot + geom_contour(aes(z = I), show.legend = TRUE, size = 0.25, linetype = "longdash", color = "gray70",
-                                breaks = seq(round2wards0(imin, interval_size), round2wards0(imax, interval_size), interval_size))
+                                breaks = contour_breaks)
+  p <- add_contour_labels(p, contour_breaks = contour_breaks, raster_start, raster_end)
   return(p)
+}
+
+trans_ab2 <- function(trans_ab1, I) {
+  # calculate transformed abundance 1 based on transformed abundance 2 and I
+  pi <- (1 / (trans_ab1 * exp(1)^I))
+  return(pi)
+}
+
+add_contour_labels <- function(plot, contour_breaks, raster_start, raster_end) {
+  # takes a list of contour line values and labels them at the bottom and right side
+  for (I in contour_breaks) {
+    # calculate x and y coordinates
+    x_ab_trans <- max(trans_ab2(trans_ab1 = raster_end, I = I), raster_start)
+    y_ab_trans <- min(trans_ab2(trans_ab1 = raster_start, I = I), raster_end)
+    # add label to plot
+    plot <- plot + annotate("text", label = paste("I =", I), x = x_ab_trans, y = y_ab_trans, vjust = 0.5, hjust = 1, size = 3, angle = -45)
+  }
+  return(plot)
 }
 
 add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_scheme) {
@@ -513,7 +533,7 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
       p <- add_interplay_col(p, col_scheme = col_scheme)
       # add interplay score contour lines
       if (contour_lines == TRUE) {
-        p <- add_contours(p, raster_df)
+        p <- add_contours(p, raster_df, raster_start = start, raster_end = end)
       }
       # determine which color scale to add for data points
       p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
