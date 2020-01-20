@@ -308,7 +308,8 @@ base_plot <- function(raster_df, start, end, hide_axes) {
   p <- ggplot(raster_df, aes(pi_t, pj_t)) +
     coord_cartesian(xlim = c(start, end), ylim = c(start, end)) +
     geom_raster(aes(fill = I)) +
-    geom_abline(slope = -1, intercept = min(raster_df$pi_t), color = "lightgray") +
+    # line where interplay = 0
+    geom_contour(aes(z = I), breaks = 0, size = 0.5, color = "gray70") +
     scale_x_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
     scale_y_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
     theme(axis.text=element_text(size=14),
