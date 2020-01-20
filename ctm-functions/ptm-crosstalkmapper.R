@@ -314,9 +314,11 @@ base_plot <- function(raster_df, start, end, hide_axes) {
     scale_y_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
     theme(axis.text=element_text(size=14, color = "black"),
           axis.title=element_text(size=14),
-          plot.title = element_text(size = 18),
+          plot.title = element_text(size = 18, hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5),
           legend.title = element_text(size = 14),
           legend.text = element_text(size = 14),
+          panel.background = element_rect(fill = "white"),
           panel.border = element_rect(fill = NA, colour = "black"))
   if (hide_axes == TRUE) {
     p <- p + labs(x = "Transformed abundance PTM1", y = "Transformed abundance PTM2", color = expression(p[j])) +
@@ -690,7 +692,3 @@ base_breaks <- function(n = 10){
     axisTicks(log10(range(x, na.rm = TRUE)), log = TRUE, n = n)
   }
 }
-
-# adjust theme to center plot titles (to set back to default: theme_set(theme_gray()))
-theme_update(panel.background = element_rect(fill = "white", colour = "lightgray"),
-  plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
