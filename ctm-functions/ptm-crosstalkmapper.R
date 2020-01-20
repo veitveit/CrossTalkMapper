@@ -312,11 +312,12 @@ base_plot <- function(raster_df, start, end, hide_axes) {
     geom_contour(aes(z = I), breaks = 0, size = 0.5, color = "gray70") +
     scale_x_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
     scale_y_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
-    theme(axis.text=element_text(size=14),
+    theme(axis.text=element_text(size=14, color = "black"),
           axis.title=element_text(size=14),
           plot.title = element_text(size = 18),
           legend.title = element_text(size = 14),
-          legend.text = element_text(size = 14))
+          legend.text = element_text(size = 14),
+          panel.border = element_rect(fill = NA, colour = "black"))
   if (hide_axes == TRUE) {
     p <- p + labs(x = "Transformed abundance PTM1", y = "Transformed abundance PTM2", color = expression(p[j])) +
       theme(axis.text = element_blank(), axis.ticks = element_blank())
