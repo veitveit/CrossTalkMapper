@@ -2,6 +2,7 @@ library(tidyr)
 library(tools)
 library(ggplot2)
 library(scales)
+library(metR)
 library(ggrepel)
 library(gridExtra)
 
@@ -678,18 +679,6 @@ log_seq <- function(lbound, ubound, stepnr) {
     logseq <- sapply(seq(0, stepnr), function(x) (k^(l + x)))
     return(logseq)
   }
-}
-
-reverselog_trans <- function(base = exp(1)) {
-  ## function for reverse log scales (https://gist.github.com/JoFrhwld/2266961)
-  # Define the desired transformation
-  trans <- function(x) -log(x, base)
-  # Define the reverse of the desired transformation
-  inv <- function(x) base^(-x)
-  # Creates the transformation
-  trans_new(paste0("reverselog-", format(base)), trans, inv, 
-            log_breaks(base = base), # default way to define the scale breaks
-            domain = c(1e-100, Inf))
 }
 
 base_breaks <- function(n = 10){
