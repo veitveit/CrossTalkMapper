@@ -348,6 +348,37 @@ add_interplay_col <- function(base_plot, col_scheme = 1) {
   return(p)
 }
 
+make_contour_label <- function(val, contour_label_form) {
+  # define form of labels
+  # default "short" only prints the value itself, "long" prepends with "I = "
+  if (contour_label_form == "long") {
+    contour_label <- paste("I =", val)
+  } else {
+    contour_label <- val
+  }
+  return(contour_label)
+}
+
+trans_ab2 <- function(trans_ab1, I) {
+  # calculate transformed abundance 1 based on transformed abundance 2 and I
+  pi <- (1 / (trans_ab1 * exp(1)^I))
+  return(pi)
+}
+
+add_contour_labels <- function(plot, contour_breaks, raster_start, raster_end, contour_label_form) {
+  # takes a list of contour line values and labels them at the bottom and right side of the plot
+  for (I in contour_breaks) {
+    # calculate x and y coordinates
+    x_ab_trans <- max(trans_ab2(trans_ab1 = raster_end, I = I), raster_start)
+    y_ab_trans <- min(trans_ab2(trans_ab1 = raster_start, I = I), raster_end)
+    # make label (short or long form)
+    contour_label <- make_contour_label(I, contour_label_form = contour_label_form)
+    # add label to plot
+    plot <- plot + annotate("text", label = contour_label, x = x_ab_trans, y = y_ab_trans, vjust = 0.5, hjust = 1, size = 3, angle = -45)
+  }
+  return(plot)
+}
+
 round2wards0 <- function(val, round2closest = 5) {
   # rounds value to the closest multiple of <round2closest> towards 0 (round up for negative and down for positive values)
   if (val < 0) {
@@ -358,33 +389,15 @@ round2wards0 <- function(val, round2closest = 5) {
   return(val_rounded)
 }
 
-add_contours <- function(base_plot, I_data, interval_size = 5, raster_start, raster_end) {
+add_contours <- function(base_plot, I_data, interval_size = 5, raster_start, raster_end, contour_label_form) {
   # add contour lines for interplay score at intervals of 5 (default)
   imin <- min(I_data$I)
   imax <- max(I_data$I)
   contour_breaks <- seq(round2wards0(imin, interval_size), round2wards0(imax, interval_size), interval_size)
   p <- base_plot + geom_contour(aes(z = I), show.legend = TRUE, size = 0.25, linetype = "longdash", color = "gray70",
                                 breaks = contour_breaks)
-  p <- add_contour_labels(p, contour_breaks = contour_breaks, raster_start, raster_end)
+  p <- add_contour_labels(p, contour_breaks, raster_start, raster_end, contour_label_form)
   return(p)
-}
-
-trans_ab2 <- function(trans_ab1, I) {
-  # calculate transformed abundance 1 based on transformed abundance 2 and I
-  pi <- (1 / (trans_ab1 * exp(1)^I))
-  return(pi)
-}
-
-add_contour_labels <- function(plot, contour_breaks, raster_start, raster_end) {
-  # takes a list of contour line values and labels them at the bottom and right side
-  for (I in contour_breaks) {
-    # calculate x and y coordinates
-    x_ab_trans <- max(trans_ab2(trans_ab1 = raster_end, I = I), raster_start)
-    y_ab_trans <- min(trans_ab2(trans_ab1 = raster_start, I = I), raster_end)
-    # add label to plot
-    plot <- plot + annotate("text", label = paste("I =", I), x = x_ab_trans, y = y_ab_trans, vjust = 0.5, hjust = 1, size = 3, angle = -45)
-  }
-  return(plot)
 }
 
 add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_scheme) {
@@ -486,7 +499,7 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
 
 CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                          connect_dots = TRUE, with_arrows = TRUE, which_label = "mj",
-                         col_scheme = 1, contour_lines = TRUE, hide_axes = TRUE,
+                         col_scheme = 1, contour_lines = TRUE, contour_labels = c("short", "long"), hide_axes = TRUE,
                          filename_string = NULL, filename_ext = "pdf", outdir = getwd()) {
   ## take data frame with transformed PTM abundances as input
   ## crosstalk maps for all PTM combinations of m_i and m_j contained in the input data frame are plotted
@@ -533,7 +546,8 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
       p <- add_interplay_col(p, col_scheme = col_scheme)
       # add interplay score contour lines
       if (contour_lines == TRUE) {
-        p <- add_contours(p, raster_df, raster_start = start, raster_end = end)
+        contour_label_form <- match.arg(contour_labels)
+        p <- add_contours(p, raster_df, raster_start = start, raster_end = end, contour_label_form = contour_label_form)
       }
       # determine which color scale to add for data points
       p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
