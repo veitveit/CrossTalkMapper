@@ -467,19 +467,31 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
   
   # calculate number of multi plot columns and rows
   # there will be one plot for each tissue and each histone (variant)
-  plotsn <- length(unique(ptm_data$splitplot_by)) * length(unique(ptm_data$hist))
+  nr_cond <- length(unique(ptm_data$splitplot_by))
+  nr_histvar <- length(unique(ptm_data$hist))
+  plotsn <- nr_cond * nr_histvar
   nrrows <- floor(sqrt(plotsn))
   nrcols <- ceiling(plotsn / nrrows)
   
-  # plot tissues in columns and histone variants in rows --> define layout matrix for grid.arrange()
-  if (plotsn == 8) {
-    lay <- rbind(c(1,3,5,7), c(2,4,6,8))
-  } else if (plotsn == 4) {
-    lay <- rbind(c(1,3), c(2,4))
-  } else if (plotsn == 2) {
-    lay <- cbind(1,2)
-  } else if (plotsn == 1) {
-    lay <- rbind(1)
+  # define layout for multiplot  
+  if (nr_histvar == 1) {
+    # only one histone variant, disregard this dimension
+    lay <- vector()
+    for (rownr in seq(1, nrrows)) {
+      plot_last <- nrcols * rownr
+      plot_1st <- plot_last - nrcols + 1
+      row <- seq(plot_1st, plot_last)
+      lay <- rbind(lay, row)
+    }
+  } else {
+    # one row per histone variant, one column per tissue/condition
+    lay <- vector()
+    for (colnr in seq(1, nrcols)) {
+      plot_last <- nrrows * colnr
+      plot_1st <- plot_last - nrrows + 1
+      col <- seq(plot_1st, plot_last)
+      lay <- cbind(lay, col)
+    }
   }
   p <- grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
   
