@@ -277,7 +277,7 @@ ptm_combs <- function(indmods, minlen = 2, maxlen = 2) {
   return(final_list)
 }
 
-make_labels <- function(data, which_label = which_label) {
+make_point_labels <- function(data, which_label = which_label) {
   ## order data and generate labels only for the first data point in each subgroup
   data$timepoint <- as.numeric(gsub(" months", "", data$timepoint))
   data_ordered <- data[order(data$mi, data$mj, data$tissue, data$timepoint, data$repl),]
@@ -321,10 +321,10 @@ base_plot <- function(raster_df, start, end, hide_axes) {
           panel.background = element_rect(fill = "white"),
           panel.border = element_rect(fill = NA, colour = "black"))
   if (hide_axes == TRUE) {
-    p <- p + labs(x = "Transformed abundance PTM1", y = "Transformed abundance PTM2", color = expression(p[j])) +
+    p <- p + labs(x = "Transformed abundance PTM1", y = "Transformed abundance PTM2") +
       theme(axis.text = element_blank(), axis.ticks = element_blank())
   } else {
-    p <- p + labs(x = expression(hat(p[i])), y = expression(hat(p[j])), color = expression(p[j]))
+    p <- p + labs(x = expression(hat(p[i])), y = expression(hat(p[j])))
   }
   return(p)
 }
@@ -410,10 +410,10 @@ add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_schem
   if (is.numeric(subgroup_data[,colcode]) == TRUE) {
     if (col_scheme == "standard") {
       p <- base_plot + scale_color_gradientn(colours = c("#00BFC4", "#3F5EFB", "#B06AB3", "#FC466B"),
-                                             limits = c(min(all_data$pj), max(all_data$pj)))
+                                             limits = c(min(all_data$colcode), max(all_data$colcode)))
     } else if (col_scheme == "legacy") {
       p <- base_plot + scale_color_gradientn(colours = c("#00BFC4", "#1A2980", "#B06AB3"),
-                                             limits = c(min(all_data$pj), max(all_data$pj)))
+                                             limits = c(min(all_data$colcode), max(all_data$colcode)))
     } else {
       warning("Unknown argument to col_scheme")
       return()
@@ -423,6 +423,15 @@ add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_schem
     p <- base_plot + scale_color_discrete() +
       guides(color = guide_legend(order = 1), fill = guide_colorbar(order = 2))
   }
+  return(p)
+}
+
+add_col_legend_label <- function(base_plot, colcode) {
+  # formatting of color-code legend label
+  # assuming colcode is "pxyz", returns labels as "p[xyz]" in the plot legend (xyz as subscript to p)
+  subscr <- gsub("p", "", colcode)
+  col_label <- bquote(p[.(subscr)]) #expression(p[subscr])
+  p <- base_plot + labs(color = col_label)
   return(p)
 }
 
@@ -542,7 +551,7 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
       plot_count_all <- plot_count_all + 1
 
       # make labels and order data accordingly
-      hist_labeled <- make_labels(hist_plot, which_label = which_label)
+      hist_labeled <- make_point_labels(hist_plot, which_label = which_label)
       # make raster plot
       p <- base_plot(raster_df, start, end, hide_axes = hide_axes)
       # add title
@@ -556,6 +565,8 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
       }
       # determine which color scale to add for data points
       p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
+      # format color-code legend label
+      p <- add_col_legend_label(p, colcode)
       # add data points and labels
       p <- add_points(p, hist_labeled)
       # add paths between points
