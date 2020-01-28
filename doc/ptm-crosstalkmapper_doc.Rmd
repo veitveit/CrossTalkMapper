@@ -1,6 +1,6 @@
 ---
 title: "PTM-CrossTalkMapper"
-subtitle: "Documentation and Common Use Cases"
+subtitle: Documentation and Common Use Cases
 output: html_notebook
 ---
 
@@ -66,7 +66,7 @@ The filtered dataset is passed as the first argument to `CrossTalkMap()`. The ne
 
 `colcode =` determines according to which parameter the data points will be color-coded, in this case $p_j$, the abundance of PTMs at K27. `which_label =` can take the arguments "mj" (default) for an individual or "mimj" for the combinatorial PTM label. The plot is printed to a pdf file with the name provided to `filename_string =` in the directory `outdir =`, relative to the working directory (default is the working directory).
 
-```{r}
+```{r, eval=FALSE}
 CrossTalkMap(ptm_ab_pos,
              splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
              connect_dots = TRUE, with_arrows = TRUE, colcode = "pj", which_label = "mimj",
@@ -79,7 +79,7 @@ knitr::include_graphics("./plots/h3/crosstalkmaps/crosstalkmap_splitby-tissue_H3
 
 The result looks pretty crowded, so let's look at methylations only in the following. The remaining PTM pairs can be compared much easier.
 
-```{r}
+```{r, eval=FALSE}
 ptm_ab_pos_mod <- ptm_ab_pos[grepl("me", ptm_ab_pos$mi) & grepl("me", ptm_ab_pos$mj),]
 CrossTalkMap(ptm_ab_pos_mod,
              splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
@@ -88,7 +88,7 @@ CrossTalkMap(ptm_ab_pos_mod,
 ```
 
 ```{r, echo=FALSE}
-knitr::include_graphics("./plots/h3/crosstalkmaps/crosstalkmap_splitby-tissue_H3_K9-K27_me.png")
+knitr::include_graphics("./plots/h3/crosstalkmaps/crosstalkmap_splitby-tissue_H3_K9-K27_all-ptms_me.png")
 ```
 
 ## Considering Histone Variants
@@ -112,7 +112,7 @@ head(histvar_ptm_ab)
 
 Filtering and calling `CrossTalkMap()` in the same way as previously adds the information level of histone variants and generates two crosstalk maps for each tissue, based on the number of histone variants in the `hist` column of `histvar_ptm_ab`, which `prepPTMdata()` took care of in the first step.
 
-```{r}
+```{r, eval=FALSE}
 histvar_ptm_ab_pos <- histvar_ptm_ab[grepl("K9", histvar_ptm_ab$mi) & grepl("K27", histvar_ptm_ab$mj),]
 histvar_ptm_ab_pos_mod <- histvar_ptm_ab_pos[grepl("me", histvar_ptm_ab_pos$mi) & grepl("me", histvar_ptm_ab_pos$mj),]
 CrossTalkMap(histvar_ptm_ab_pos_mod,
