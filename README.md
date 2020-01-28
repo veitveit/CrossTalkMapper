@@ -1,19 +1,20 @@
 # PTM-CrossTalkMapper
 
-PTM-CrossTalkMapper is a flexible toolkit to visualize multi-layered quantitative post-transcriptional modification (PTM) data. The preprint manuscript can be found on [bioRxiv](https://www.biorxiv.org/content/10.1101/801837v1).
+PTM-CrossTalkMapper is a flexible toolkit to visualize multi-layered quantitative post-transcriptional modification (PTM) data.
 
 ## Citation
 
-Visualization of the Dynamics of Histone Modifications and Their Crosstalk Using *PTM-CrossTalkMapper*. Rebecca Kirsch, Ole N. Jensen, Veit Schwämmle. Manuscript submitted for publication.
+Visualization of the Dynamics of Histone Modifications and Their Crosstalk Using *PTM-CrossTalkMapper*. Rebecca Kirsch, Ole N. Jensen, Veit Schwämmle. Methods, 2020 Jan 21, pii: S1046-2023(19)30139-2, doi: [10.1016/j.ymeth.2020.01.012](https://doi.org/10.1016/j.ymeth.2020.01.012).
 
 ## Requirements
 
-* R installation (see https://www.r-project.org/)
+* R installation (see https://www.r-project.org/; tested under R version 3.6.2)
 * R packages:
   * tidyr
   * tools
   * ggplot2
   * scales
+  * metR
   * ggrepel
   * gridExtra
 
