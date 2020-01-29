@@ -2,6 +2,7 @@ library(tidyr)
 library(tools)
 library(ggplot2)
 library(scales)
+library(metR)
 library(ggrepel)
 library(gridExtra)
 
@@ -276,7 +277,7 @@ ptm_combs <- function(indmods, minlen = 2, maxlen = 2) {
   return(final_list)
 }
 
-make_labels <- function(data, which_label = which_label) {
+make_point_labels <- function(data, which_label = which_label) {
   ## order data and generate labels only for the first data point in each subgroup
   data$timepoint <- as.numeric(gsub(" months", "", data$timepoint))
   data_ordered <- data[order(data$mi, data$mj, data$tissue, data$timepoint, data$repl),]
@@ -307,20 +308,23 @@ base_plot <- function(raster_df, start, end, hide_axes) {
   p <- ggplot(raster_df, aes(pi_t, pj_t)) +
     coord_cartesian(xlim = c(start, end), ylim = c(start, end)) +
     geom_raster(aes(fill = I)) +
-    scale_fill_gradient2(low = "#ffd27f", mid = "white", high = "#ff7f7f") +
-    geom_abline(slope = -1, intercept = min(raster_df$pi_t), color = "lightgrey") +
+    # line where interplay = 0
+    geom_contour(aes(z = I), breaks = 0, size = 0.5, color = "gray70") +
     scale_x_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
     scale_y_continuous(trans = reverselog_trans(10), breaks = base_breaks(5), labels = prettyNum) +
-    theme(axis.text=element_text(size=14),
-          axis.title=element_text(size=18),
-          plot.title = element_text(size = 18),
-          legend.title = element_text(size = 18),
-          legend.text = element_text(size = 14))
+    theme(axis.text=element_text(size=14, color = "black"),
+          axis.title=element_text(size=14),
+          plot.title = element_text(size = 18, hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5),
+          legend.title = element_text(size = 14),
+          legend.text = element_text(size = 14),
+          panel.background = element_rect(fill = "white"),
+          panel.border = element_rect(fill = NA, colour = "black"))
   if (hide_axes == TRUE) {
-    p <- p + labs(x = "Invariant x", y = "Invariant y", color = expression(p[j])) +
+    p <- p + labs(x = "Transformed abundance PTM1", y = "Transformed abundance PTM2") +
       theme(axis.text = element_blank(), axis.ticks = element_blank())
   } else {
-    p <- p + labs(x = expression(hat(p[i])), y = expression(hat(p[j])), color = expression(p[j]))
+    p <- p + labs(x = expression(hat(p[i])), y = expression(hat(p[j])))
   }
   return(p)
 }
@@ -336,16 +340,98 @@ add_title <- function(base_plot, mi, cond, hist, which_label) {
   return(p)
 }
 
-add_colscale <- function(base_plot, subgroup_data, all_data, colcode) {
-  # determine which color scale to add for data points based on data type
+add_interplay_col <- function(base_plot, col_scheme = "standard") {
+  # determine color scheme for interplay score (plot background), where "standard" (default): gray gradient, "legacy": yellow to red
+  if (col_scheme == "standard") {
+    p <- base_plot + scale_fill_gradient2(low = "gray85", mid = "white", high = "gray85")
+  } else if (col_scheme == "legacy") {
+    p <- base_plot + scale_fill_gradient2(low = "#ffd27f", mid = "white", high = "#ff7f7f")
+  } else {
+    warning("Unknown argument to col_scheme")
+    return()
+  }
+  return(p)
+}
+
+make_contour_label <- function(val, contour_label_form) {
+  # define form of labels
+  # default "short" only prints the value itself, "long" prepends with "I = "
+  if (contour_label_form == "long") {
+    contour_label <- paste("I =", val)
+  } else {
+    contour_label <- val
+  }
+  return(contour_label)
+}
+
+trans_ab2 <- function(trans_ab1, I) {
+  # calculate transformed abundance 1 based on transformed abundance 2 and I
+  pi <- (1 / (trans_ab1 * exp(1)^I))
+  return(pi)
+}
+
+add_contour_labels <- function(plot, contour_breaks, raster_start, raster_end, contour_label_form) {
+  # takes a list of contour line values and labels them at the bottom and right side of the plot
+  for (I in contour_breaks) {
+    # calculate x and y coordinates
+    x_ab_trans <- max(trans_ab2(trans_ab1 = raster_end, I = I), raster_start)
+    y_ab_trans <- min(trans_ab2(trans_ab1 = raster_start, I = I), raster_end)
+    # make label (short or long form)
+    contour_label <- make_contour_label(I, contour_label_form = contour_label_form)
+    # add label to plot
+    plot <- plot + annotate("text", label = contour_label, x = x_ab_trans, y = y_ab_trans, vjust = 0.5, hjust = 1, size = 3, angle = -45)
+  }
+  return(plot)
+}
+
+round2wards0 <- function(val, round2closest = 5) {
+  # rounds value to the closest multiple of <round2closest> towards 0 (round up for negative and down for positive values)
+  if (val < 0) {
+    val_rounded <- ceiling(val / round2closest)*round2closest
+  } else {
+    val_rounded <- floor(val / round2closest)*round2closest
+  }
+  return(val_rounded)
+}
+
+add_contours <- function(base_plot, I_data, interval_size = 5, raster_start, raster_end, contour_label_form) {
+  # add contour lines for interplay score at intervals of 5 (default)
+  imin <- min(I_data$I)
+  imax <- max(I_data$I)
+  contour_breaks <- seq(round2wards0(imin, interval_size), round2wards0(imax, interval_size), interval_size)
+  p <- base_plot + geom_contour(aes(z = I), show.legend = TRUE, size = 0.25, linetype = "longdash", color = "gray70",
+                                breaks = contour_breaks)
+  p <- add_contour_labels(p, contour_breaks, raster_start, raster_end, contour_label_form)
+  return(p)
+}
+
+add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_scheme) {
+  # determine which color scale to add for data points based on data type and background color scheme
   if (is.numeric(subgroup_data[,colcode]) == TRUE) {
-    p <- base_plot + scale_color_gradient2(low = "#00BFC4", mid = "#1A2980", high = "#B06AB3",
-                                           limits = c(min(all_data$pj), max(all_data$pj)), midpoint = max(all_data$pj) / 2) +
-      guides(color = guide_colorbar(order = 1), fill = guide_colorbar(order = 2))
+    if (col_scheme == "standard") {
+      p <- base_plot + scale_color_gradientn(colours = c("#00BFC4", "#3F5EFB", "#B06AB3", "#FC466B"),
+                                             limits = c(min(all_data$colcode), max(all_data$colcode)))
+    } else if (col_scheme == "legacy") {
+      p <- base_plot + scale_color_gradientn(colours = c("#00BFC4", "#1A2980", "#B06AB3"),
+                                             limits = c(min(all_data$colcode), max(all_data$colcode)))
+    } else {
+      warning("Unknown argument to col_scheme")
+      return()
+    }
+    p <- p + guides(color = guide_colorbar(order = 1), fill = guide_colorbar(order = 2))
   } else {
     p <- base_plot + scale_color_discrete() +
       guides(color = guide_legend(order = 1), fill = guide_colorbar(order = 2))
   }
+  return(p)
+}
+
+add_col_legend_label <- function(base_plot, colcode) {
+  # formatting of color-code legend label
+  # assuming colcode is "pxyz", returns labels as "p[xyz]" in the plot legend (xyz as subscript to p)
+  subscr <- gsub("p", "", colcode)
+  col_label <- bquote(p[.(subscr)]) #expression(p[subscr])
+  p <- base_plot + labs(color = col_label)
   return(p)
 }
 
@@ -365,70 +451,90 @@ add_paths <- function(plot, data, with_arrows) {
       mimj_connected <- data[data$mi == mi & data$mj == mj,]
       # if mj present at at least two time points, connect them by arrow (or for replicates by line only)
       if (nrow(mimj_connected) > 1 && with_arrows == TRUE) {
-        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.3,
-                                   arrow = arrow(length = unit(0.15, "cm")))
+        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5,
+                                   arrow = arrow(length = unit(0.18, "cm")))
       } else if (nrow(mimj_connected) > 1 && with_arrows == FALSE) {
-        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.3)
+        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5)
       }
     }
   }
   return(plot)
 }
 
-plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_string) {
+plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_string, filename_ext) {
   ## generate multiplot from list of plots, including .tab file of contained data
   ## ptm_data is used to calculate the theoretical number of individual plots, since some in the list might be empty
   
   # calculate number of multi plot columns and rows
   # there will be one plot for each tissue and each histone (variant)
-  plotsn <- length(unique(ptm_data$splitplot_by)) * length(unique(ptm_data$hist))
+  nr_cond <- length(unique(ptm_data$splitplot_by))
+  nr_histvar <- length(unique(ptm_data$hist))
+  plotsn <- nr_cond * nr_histvar
   nrrows <- floor(sqrt(plotsn))
   nrcols <- ceiling(plotsn / nrrows)
-  # calculate width and height of multi plot
-  plotunit <- 6 # each individual plot should be 6x6 cm
-  plotheight <- nrrows * plotunit
-  plotwidth <- nrcols * plotunit
   
-  # plot tissues in columns and histone variants in rows --> define layout matrix for grid.arrange()
-  if (plotsn == 8) {
-    lay <- rbind(c(1,3,5,7), c(2,4,6,8))
-  } else if (plotsn == 4) {
-    lay <- rbind(c(1,3), c(2,4))
-  } else if (plotsn == 2) {
-    lay <- cbind(1,2)
-  } else if (plotsn == 1) {
-    lay <- rbind(1)
-  }
-  
-  # determine histone type for file name
-  if (nrow(ptm_data[grep('\\.', ptm_data$hist),]) > 0) {
-    filename_hist <- "histvars"
+  # define layout for multiplot  
+  if (nr_histvar == 1) {
+    # only one histone variant, disregard this dimension
+    lay <- vector()
+    for (rownr in seq(1, nrrows)) {
+      plot_last <- nrcols * rownr
+      plot_1st <- plot_last - nrcols + 1
+      row <- seq(plot_1st, plot_last)
+      lay <- rbind(lay, row)
+    }
   } else {
-    filename_hist <- "H3"
+    # one row per histone variant, one column per tissue/condition
+    lay <- vector()
+    for (colnr in seq(1, nrcols)) {
+      plot_last <- nrrows * colnr
+      plot_1st <- plot_last - nrrows + 1
+      col <- seq(plot_1st, plot_last)
+      lay <- cbind(lay, col)
+    }
   }
+  p <- grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
   
-  # plot
-  pdf(paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".pdf"),
-      width = plotwidth, height = plotheight)
-  grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
-  dev.off()
-  
-  # print values for all plotted PTMs to file
-  ptm_data_sort <- ptm_data[with(ptm_data, order(hist, tissue, mj, timepoint)),]
-  write.table(ptm_data_sort,
-              paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".tab"),
-              quote = FALSE, sep = "\t", row.names = FALSE)
-  
+  if (is.null(filename_string)) {
+    # return plot object
+    return(p)
+  } else {
+    # determine histone type for file name
+    if (nrow(ptm_data[grep('\\.', ptm_data$hist),]) > 0) {
+      filename_hist <- "histvars"
+    } else {
+      filename_hist <- "H3"
+    }
+    
+    # calculate width and height of multi plot
+    plotunit <- 6 # each individual plot should be 6x6 cm
+    plotheight <- nrrows * plotunit
+    plotwidth <- nrcols * plotunit
+    
+    # plot
+    ggsave(filename = paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".", filename_ext), plot = p,
+        width = plotwidth, height = plotheight)
+
+    # print values for all plotted PTMs to file
+    ptm_data_sort <- ptm_data[with(ptm_data, order(hist, tissue, mj, timepoint)),]
+    write.table(ptm_data_sort,
+                paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".tab"),
+                quote = FALSE, sep = "\t", row.names = FALSE)
+  }
 }
 
 CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
-                             connect_dots = TRUE, with_arrows = TRUE, which_label = "mj", hide_axes = TRUE,
-                             filename_string, outdir = getwd()) {
+                         connect_dots = TRUE, with_arrows = TRUE, which_label = "mj",
+                         col_scheme = "standard", contour_lines = TRUE, contour_labels = c("short", "long"), hide_axes = TRUE,
+                         filename_string = NULL, filename_ext = "pdf", outdir = getwd()) {
   ## take data frame with transformed PTM abundances as input
-  ## output crosstalk map to outdir
   ## crosstalk maps for all PTM combinations of m_i and m_j contained in the input data frame are plotted
   ## encoding according to splitplot_by, connected, group_by, colcode (see encode())
   ## which_label defines labels for groups of data points: "mj" (default) for individual or "mimj" for combinatorial PTM
+  ## col_scheme determines the color of the interplay score gradient (plot background), where "standard" (default): gray scale, "legacy": yellow to red
+  ## by default, returns plot object
+  ## otherwise, if argument to filename_string is provided, a file name is constructed and a file created
+  ## (default: pdf, otherwise one of "eps", "ps", "tex" (pictex), "jpeg", "tiff", "png", "bmp", "svg" or "wmf", might require additional packages)
   ## filename_string will be attached to the plot file name starting with crosstalkmap_<mi> and to reflect how m_js to plot have been selected
   
   # define start and end for x and y scales based on min and max in pi_hat and pj_hat
@@ -457,13 +563,22 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
       plot_count_all <- plot_count_all + 1
 
       # make labels and order data accordingly
-      hist_labeled <- make_labels(hist_plot, which_label = which_label)
+      hist_labeled <- make_point_labels(hist_plot, which_label = which_label)
       # make raster plot
       p <- base_plot(raster_df, start, end, hide_axes = hide_axes)
       # add title
       p <- add_title(p, mi, cond, hist, which_label)
+      # add color scale for interplay score / raster plot
+      p <- add_interplay_col(p, col_scheme)
+      # add interplay score contour lines
+      if (contour_lines == TRUE) {
+        contour_label_form <- match.arg(contour_labels)
+        p <- add_contours(p, raster_df, raster_start = start, raster_end = end, contour_label_form = contour_label_form)
+      }
       # determine which color scale to add for data points
-      p <- add_colscale(p, subgroup_data = hist_labeled, ptm_data, colcode)
+      p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
+      # format color-code legend label
+      p <- add_col_legend_label(p, colcode)
       # add data points and labels
       p <- add_points(p, hist_labeled)
       # add paths between points
@@ -478,7 +593,7 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
   }
 
   # generate multiplot from list of plots, incl .tab of all data points contained in the plot
-  plot_all(plotlist_all, ptm_data, outdir, splitplot_by, filename_string)
+  plot_all(plotlist_all, ptm_data, outdir, splitplot_by, filename_string, filename_ext)
 
 }
 
@@ -593,18 +708,6 @@ log_seq <- function(lbound, ubound, stepnr) {
   }
 }
 
-reverselog_trans <- function(base = exp(1)) {
-  ## function for reverse log scales (https://gist.github.com/JoFrhwld/2266961)
-  # Define the desired transformation
-  trans <- function(x) -log(x, base)
-  # Define the reverse of the desired transformation
-  inv <- function(x) base^(-x)
-  # Creates the transformation
-  trans_new(paste0("reverselog-", format(base)), trans, inv, 
-            log_breaks(base = base), # default way to define the scale breaks
-            domain = c(1e-100, Inf))
-}
-
 base_breaks <- function(n = 10){
   # function for nice axis breaks (https://stackoverflow.com/a/22227846)
   # argument determines approximate number of labeled tick marks, default = 10
@@ -612,7 +715,3 @@ base_breaks <- function(n = 10){
     axisTicks(log10(range(x, na.rm = TRUE)), log = TRUE, n = n)
   }
 }
-
-# adjust theme to center plot titles (to set back to default: theme_set(theme_gray()))
-theme_update(panel.background = element_rect(fill = "white", colour = "lightgrey"),
-  plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
