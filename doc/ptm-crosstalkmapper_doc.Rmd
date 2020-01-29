@@ -64,13 +64,17 @@ ptm_ab_pos <- ptm_ab[grepl("K9", ptm_ab$mi) & grepl("K27", ptm_ab$mj),]
 
 The filtered dataset is passed as the first argument to `CrossTalkMap()`. The next three options define how the experimental variables, here tissue, time point and replicate, are organized in the plot. In this example, which uses the default arguments, individual maps are generated for each of the tissues (`splitplot_by = "tissue"`), all with the same ranges for abundances and interplay score. The different instances of the variable passed to `connected =` may be connected by lines or arrows, depending on the arguments for `connect_dots =` and `with_arrows = `. Here, these groups of data points connected by arrows represent the time series of each PTM pair (`connected = "timepoint"`). The data points are grouped by the variable passed to `group_by =`, and only connected within these groups. For this particular example, this parameter is irrelevant because the measurements for the remaining experimental variable, the replicates, have been averaged, so there is only one measurement for each PTM pair for each time point and tissue. In this case, the default argument `group_by = "repl"` does not have to be modified.
 
-`colcode =` determines according to which parameter the data points will be color-coded, in this case $p_j$, the abundance of PTMs at K27. `which_label =` can take the arguments "mj" (default) for an individual or "mimj" for the combinatorial PTM label. The plot is printed to a pdf file with the name provided to `filename_string =` in the directory `outdir =`, relative to the working directory (default is the working directory).
+`colcode =` determines according to which parameter the data points will be color-coded, in this case $p_j$, the abundance of PTMs at K27. `which_label =` can take the arguments "mj" (default) for an individual or "mimj" for the combinatorial PTM label. The interplay score contour lines can be labeled with short (default) or long labels (`contour_labels = "long"` produces `I = <value>` labels) or omitted altogether by setting `contour_lines = FALSE`.
+
+The plot is printed to a file with the file name provided to `filename_string =` in the directory `outdir =`, relative to the working directory (default is the working directory). The file format can be specified by `filename_ext =`, where the default is "pdf" and other options are "eps", "ps", "tex" (pictex), "jpeg", "tiff", "png", "bmp", "svg" or "wmf" (additional packages might be required). If `filename_string =` is omitted from the function call, the plot object is returned directly and no file is generated.
 
 ```{r, eval=FALSE}
 CrossTalkMap(ptm_ab_pos,
              splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
              connect_dots = TRUE, with_arrows = TRUE, colcode = "pj", which_label = "mimj",
-             filename_string = "K9-K27_all-ptms", outdir = "plots/h3/crosstalkmaps/")
+             contour_lines = TRUE, contour_labels = "short",
+             filename_string = "K9-K27_all-ptms", filename_ext = "pdf",
+             outdir = "plots/h3/crosstalkmaps/")
 ```
 
 ```{r, echo=FALSE}
@@ -84,7 +88,9 @@ ptm_ab_pos_mod <- ptm_ab_pos[grepl("me", ptm_ab_pos$mi) & grepl("me", ptm_ab_pos
 CrossTalkMap(ptm_ab_pos_mod,
              splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
              connect_dots = TRUE, with_arrows = TRUE, colcode = "pj", which_label = "mimj",
-             filename_string = "K9-K27_all-ptms_me", outdir = "plots/h3/crosstalkmaps/")
+             contour_lines = TRUE, contour_labels = "short",
+             filename_string = "K9-K27_all-ptms_me", filename_ext = "pdf",
+             outdir = "plots/h3/crosstalkmaps/")
 ```
 
 ```{r, echo=FALSE}
@@ -118,7 +124,9 @@ histvar_ptm_ab_pos_mod <- histvar_ptm_ab_pos[grepl("me", histvar_ptm_ab_pos$mi) 
 CrossTalkMap(histvar_ptm_ab_pos_mod,
              splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
              connect_dots = TRUE, with_arrows = TRUE, colcode = "pj", which_label = "mimj",
-             filename_string = "K9-K27_all-ptms_me", outdir = "plots/histvars/crosstalkmaps/")
+             contour_lines = TRUE, contour_labels = "short",
+             filename_string = "K9-K27_all-ptms_me", filename_ext = "pdf",
+             outdir = "plots/histvars/crosstalkmaps/")
 ```
 
 ```{r, echo=FALSE}
