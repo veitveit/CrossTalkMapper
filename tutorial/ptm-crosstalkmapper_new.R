@@ -691,37 +691,37 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
   for (cond in mixedsort(unique(ptm_data[[splitplot_by]]))) {
     split_plot <- ptm_data[ptm_data[[splitplot_by]] == cond, ]
     for (hist in unique(ptm_data$hist)) {
-      
       hist_plot <- split_plot[split_plot$hist == hist, ]
-      plot_count_all <- plot_count_all + 1
-      
-      # make labels and order data accordingly
-      hist_labeled <- make_point_labels(hist_plot, which_label = which_label)
-      # make raster plot
-      p <- base_plot(raster_df, start, end, hide_axes = hide_axes)
-      # add title
-      p <- add_title(p, mi, cond, hist, which_label)
-      # add color scale for interplay score / raster plot
-      p <- add_interplay_col(p, col_scheme)
-      # add interplay score contour lines
-      if (contour_lines == TRUE) {
-        contour_label_form <- match.arg(contour_labels)
-        p <- add_contours(p, raster_df, raster_start = start, raster_end = end, contour_label_form = contour_label_form)
+      if (nrow(hist_plot) > 0) {
+        plot_count_all <- plot_count_all + 1
+        
+        # make labels and order data accordingly
+        hist_labeled <- make_point_labels(hist_plot, which_label = which_label)
+        # make raster plot
+        p <- base_plot(raster_df, start, end, hide_axes = hide_axes)
+        # add title
+        p <- add_title(p, mi, cond, hist, which_label)
+        # add color scale for interplay score / raster plot
+        p <- add_interplay_col(p, col_scheme)
+        # add interplay score contour lines
+        if (contour_lines == TRUE) {
+          contour_label_form <- match.arg(contour_labels)
+          p <- add_contours(p, raster_df, raster_start = start, raster_end = end, contour_label_form = contour_label_form)
+        }
+        # determine which color scale to add for data points
+        p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
+        # format color-code legend label
+        p <- add_col_legend_label(p, colcode)
+        # add data points and labels
+        p <- add_points(p, hist_labeled)
+        # add paths between points
+        if (connect_dots == TRUE) {
+          p <- add_paths(p, hist_labeled, with_arrows)
+        }
+        
+        # add plot to list
+        plotlist_all[[plot_count_all]] <- p
       }
-      # determine which color scale to add for data points
-      p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
-      # format color-code legend label
-      p <- add_col_legend_label(p, colcode)
-      # add data points and labels
-      p <- add_points(p, hist_labeled)
-      # add paths between points
-      if (connect_dots == TRUE) {
-        p <- add_paths(p, hist_labeled, with_arrows)
-      }
-      
-      # add plot to list
-      plotlist_all[[plot_count_all]] <- p
-      
     }
   }
   
@@ -800,16 +800,16 @@ line_ct <- function(data, connected, label="", outdir = getwd()) {
     par(new = T)
     datah <- data[data$hist == hist[1], ]
     interplays <- unique(datah[,c("connected","I"),])
-      plot(as.numeric(interplays$connected), interplays$I, type = "b", col = "black", lwd = 2,
-           # xlim = c(min(data$connected), max(data$connected)),
-           axes = F, xlab = NA, ylab = NA, ylim=range(data$I,na.rm=T), pch=2)
-      axis(side = 4)
-      mtext(side = 4, line = 3, "Interplay Score")
-      if (length(hist) > 1) {
-        for (h in 2:length(hist)) {
-          datah <- data[data$hist == hist[h],]
-          lines(datah$connected, datah$I, type="b", col = "black", lwd = 2, lty=h,pch=2)
-        }
+    plot(as.numeric(interplays$connected), interplays$I, type = "b", col = "black", lwd = 2,
+         # xlim = c(min(data$connected), max(data$connected)),
+         axes = F, xlab = NA, ylab = NA, ylim=range(data$I,na.rm=T), pch=2)
+    axis(side = 4)
+    mtext(side = 4, line = 3, "Interplay Score")
+    if (length(hist) > 1) {
+      for (h in 2:length(hist)) {
+        datah <- data[data$hist == hist[h],]
+        lines(datah$connected, datah$I, type="b", col = "black", lwd = 2, lty=h,pch=2)
+      }
     }
   }
   legend("bottom", inset = c(0, -0.225), horiz = TRUE, lty = "solid",
@@ -851,7 +851,7 @@ heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", titl
             scale = hscale, col=bluered(100), density.info = "density", 
             ColSideColors = rainbow(length(colvec))[colvec], srtCol=45)
   
-  dev.off()
+  dev.off
 }
 
 ###############
