@@ -851,7 +851,7 @@ heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", titl
             scale = hscale, col=bluered(100), density.info = "density", 
             ColSideColors = rainbow(length(colvec))[colvec], srtCol=45)
   
-  dev.off
+  dev.off()
 }
 
 ###############
