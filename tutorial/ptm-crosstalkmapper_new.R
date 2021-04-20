@@ -495,8 +495,8 @@ add_contour_labels <- function(plot, contour_breaks, raster_start, raster_end, c
   # takes a list of contour line values and labels them at the bottom and right side of the plot
   for (I in contour_breaks) {
     # calculate x and y coordinates
-    x_ab_trans <- max(trans_ab2(trans_ab1 = raster_end, I = I), raster_start)
-    y_ab_trans <- min(trans_ab2(trans_ab1 = raster_start, I = I), raster_end)
+    y_ab_trans <- min(trans_ab2(trans_ab1 = raster_end, I = I), raster_start)
+    x_ab_trans <- max(trans_ab2(trans_ab1 = raster_start, I = I), raster_end)
     # make label (short or long form)
     contour_label <- make_contour_label(I, contour_label_form = contour_label_form)
     # add label to plot
@@ -660,6 +660,7 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
                          connect_dots = TRUE, with_arrows = TRUE, which_label = "mj",
                          col_scheme = "standard", contour_lines = TRUE, contour_labels = c("short", "long"), hide_axes = TRUE,
                          filename_string = NULL, filename_ext = "pdf", outdir = getwd()) {
+
   ## take data frame with transformed PTM abundances as input
   ## crosstalk maps for all PTM combinations of m_i and m_j contained in the input data frame are plotted
   ## encoding according to splitplot_by, connected, group_by, colcode (see encode())
@@ -673,13 +674,13 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
   # define start and end for x and y scales based on min and max in pi_hat and pj_hat
   # will be the same for all plots to make them comparable
   # start cannot be 0 (this would be the case if pi = pij); therefore, find smallest value > 0 for min
-  start <- min(ptm_data$pi_hat[is.finite(ptm_data$pi_hat) & ptm_data$pi_hat > 0],
+  end <- min(ptm_data$pi_hat[is.finite(ptm_data$pi_hat) & ptm_data$pi_hat > 0],
                ptm_data$pj_hat[is.finite(ptm_data$pj_hat) & ptm_data$pj_hat > 0])
-  end <- max(ptm_data$pi_hat[is.finite(ptm_data$pi_hat)], ptm_data$pj_hat[is.finite(ptm_data$pj_hat)])
+  start <- max(ptm_data$pi_hat[is.finite(ptm_data$pi_hat)], ptm_data$pj_hat[is.finite(ptm_data$pj_hat)])
   
   # generate data for rasterplot
-  raster_df <- raster(start, end)
-  
+  raster_df <- raster(start,end)
+
   # what should be encoded how? copy respective columns
   ptm_data <- encode(ptm_data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode)
   
