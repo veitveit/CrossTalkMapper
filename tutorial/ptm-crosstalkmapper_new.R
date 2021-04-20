@@ -767,11 +767,11 @@ line_ct <- function(data, connected, label="", outdir = getwd()) {
   hist <- unique(data$hist)
   # plot
   pdf(paste0(outdir, "ct-params_", data$mi, data$mj, "_", label, ".pdf"))
-  par(xpd = TRUE, mar = c(6,5,2,5))
+  par(xpd = TRUE, mar = c(6,4,2,5), cex=0.9)
   datah <- data[data$hist == hist[1], ]
   plot(as.numeric(datah$connected), datah$pi, type = "b", col = "orange", lwd = 2,
        ylim = c(0, max(c(data$pi, data$pj), na.rm=T)),
-       xlab = label, ylab = "Abundances", xaxt = "n", main=paste(data$mi, "and", data$mj))
+       xlab = label, ylab = "Abundances", xaxt = "n", main=paste(data$mi[1], "and", data$mj[1]))
   #  title(paste0(toupper(substr(tissue, 1, 1)), substr(tissue, 2, nchar(tissue)), ", ", hist), line = 0.4)
   axis(side = 1, at = datah$connected, labels = datah$connected)
   lines(datah$connected, datah$pj, type = "b", col = "blue", lwd = 2)
