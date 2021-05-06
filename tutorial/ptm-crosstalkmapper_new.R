@@ -329,16 +329,18 @@ raster <- function(start, end) {
   return(raster_df)
 }
 
-encode <- function(data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode) {
+encode <- function(data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode, shapecode = shapecode) {
   ## what should be encoded how? needs to be given as function argument in main function (CrossTalkMap())
   # splitplot_by: individual plots for which variable? (H3/histvars: tissue, repls: time; histone variants are taken care of automatically)
   # connected: the different instances of this variable are connected / grouped (H3/histvars: time, repls: replicates)
   # group_by: data points are grouped by this variable (H3/histvars: irrelevant (implicitely replicates), repls: tissue)
   # colcode: this variable is color-coded (H3/histvars: p_j, repls: tissue)
+  #TODO add def shapecode
   data$splitplot_by <- data[[splitplot_by]]
   data$connected <- data[[connected]]
   data$group_by <- data[[group_by]]
   data$colcode <- data[[colcode]]
+  if(!is.null(shapecode)){data$shapecode <- as.integer(data[[shapecode]])}else{data$shapecode=16}
   return(data)
 }
 
@@ -438,7 +440,7 @@ base_plot <- function(raster_df, start, end, hide_axes) {
           plot.title = element_text(size = 18, hjust = 0.5),
           plot.subtitle = element_text(hjust = 0.5),
           legend.title = element_text(size = 14),
-          legend.text = element_text(size = 14),
+          legend.text = element_text(size = 10),
           panel.background = element_rect(fill = "white"),
           panel.border = element_rect(fill = NA, colour = "black"))
   if (hide_axes == TRUE) {
@@ -452,7 +454,7 @@ base_plot <- function(raster_df, start, end, hide_axes) {
 
 add_title <- function(base_plot, mi, cond, hist, which_label) {
   # if data points are labeled with m_j only, m_i should be in the title
-  # otherwise, labels are of the form mimj, then only condition and histone type in title
+  # otherwise, labels are of the form mimj, then only condition and histone type are displayed in title
   if (which_label == "mj") {
     p <- base_plot + ggtitle(mi, subtitle = paste(cond, hist, sep = ", "))
   } else {
@@ -566,12 +568,15 @@ add_col_legend_label <- function(base_plot, colcode) {
   return(p)
 }
 
-add_points <- function(base_plot, data) {
+add_points <- function(base_plot, data, shapecode) {
   # add data points and labels to plot
+  if(!is.null(shapecode)){data$shapecode <- factor(data$shapecode)}
+  
   p <- base_plot +
-    geom_point(data = data, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 1) +
-    geom_text_repel(data = data, mapping = aes(x = pi_hat, y = pj_hat, label = label, color = colcode),
-                    size = 3, segment.size = 0.025, show.legend = FALSE)
+    geom_point(data = data, mapping = aes_string(x = "pi_hat", y = "pj_hat", color = "colcode", shape = shapecode), size = 1.5) +
+    geom_text_repel(data = data, mapping = aes(x = pi_hat, y = pj_hat, label = label, color = colcode), 
+                    size = 3, segment.size = 0.025, show.legend = FALSE)+
+    labs(shape = shapecode)
   return(p)
 }
 
@@ -656,7 +661,7 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
   }
 }
 
-CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
+CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl", shapecode = NULL,
                          connect_dots = TRUE, with_arrows = TRUE, which_label = "mj",
                          col_scheme = "standard", contour_lines = TRUE, contour_labels = c("short", "long"), hide_axes = TRUE,
                          filename_string = NULL, filename_ext = "pdf", outdir = getwd()) {
@@ -682,11 +687,20 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
   raster_df <- raster(start,end)
 
   # what should be encoded how? copy respective columns
-  ptm_data <- encode(ptm_data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode)
+  ptm_data <- encode(ptm_data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode, shapecode = shapecode)
+ 
   
   # print all x plots (histone (variants) * 4 tissues) on one page
   plotlist_all <- list()
   plot_count_all <- 0
+  
+  #Verify that 'mi' contain one PTM if which_label is set to 'mj'
+  if(length(unique(ptm_data$mi)) > 1 & which_label != "mimj"){
+    message(paste0("WARNING: 'which_label' has been set to '", which_label, "', however dataset contains more than one modification type in 'mi': 'which_label' has been set to 'mimj'"))
+    which_label = "mimj"
+  }else{
+    mi = unique(ptm_data$mi)[1]
+  }
   
   # iterate over individual conditions, making one plot for each
   for (cond in mixedsort(unique(ptm_data[[splitplot_by]]))) {
@@ -714,7 +728,7 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
         # format color-code legend label
         p <- add_col_legend_label(p, colcode)
         # add data points and labels
-        p <- add_points(p, hist_labeled)
+        p <- add_points(p, hist_labeled,shapecode)
         # add paths between points
         if (connect_dots == TRUE) {
           p <- add_paths(p, hist_labeled, with_arrows)
@@ -755,7 +769,6 @@ line_ab <- function(data, connected, label="", outdir = getwd()) {
     theme_classic() +
     theme(text = element_text(size = 15), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     coord_cartesian(clip = "off")
-  print(p)
   dev.off()
 }
 
@@ -768,7 +781,7 @@ line_ct <- function(data, connected, label="", outdir = getwd()) {
   hist <- unique(data$hist)
   # plot
   pdf(paste0(outdir, "ct-params_", data$mi, data$mj, "_", label, ".pdf"))
-  par(xpd = TRUE, mar = c(6,4,2,5), cex=0.9)
+  par(xpd = TRUE, mar = c(7,4,2,5), cex=0.9)
   datah <- data[data$hist == hist[1], ]
   plot(as.numeric(datah$connected), datah$pi, type = "b", col = "orange", lwd = 2,
        ylim = c(0, max(c(data$pi, data$pj), na.rm=T)),
@@ -850,7 +863,7 @@ heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", titl
   heatmap.2(as.matrix(flat_matrix), Rowv = T, Colv = T, cexRow = 1.0, cexCol = 1,
             main = title_of_plot, cex.main = .5, trace = "none",
             scale = hscale, col=bluered(100), density.info = "density", 
-            ColSideColors = rainbow(length(colvec))[colvec], srtCol=45)
+            ColSideColors = rainbow(length(colvec))[colvec], srtCol=45, margins=c(13,8))
   
   dev.off()
 }
