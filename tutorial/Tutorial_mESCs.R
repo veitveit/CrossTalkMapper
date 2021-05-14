@@ -84,6 +84,14 @@ ggsave(filename = paste0("plots/ptm_distribution.pdf"), plot = p)
 
 ptm_ab_hist <- ptm_ab[grepl("H3.1", ptm_ab$hist),]#ptm abundance of one histone variant 
 
+#find 10 most abundant m_j and subset data frame
+ptm_ab_mi_ordered <- ptm_ab_pos_mod[order(-ptm_ab_pos_mod$pj), ]
+ptm_ab_mi_uniqmj <- ptm_ab_mi_ordered[!duplicated(ptm_ab_mi_ordered$mj), ]
+ptm_ab_mi_topab <- head(ptm_ab_mi_uniqmj, n = 10)
+topab_mj <- ptm_ab_mi_topab[,"mj"]
+ptm_ab_pos_mod_top <- ptm_ab_pos_mod[grep(paste(topab_mj, collapse = "|"), ptm_ab_pos_mod$mj), ]
+
+
 ## TODO Explain  idea of heatmaps and what to take from there (single versus double PTMs as information base)
 plotdat <- unique(ptm_ab[,c("hist","tissue","timepoint","repl","mi","pi")])
 flat_matrix <- reshape2::dcast(plotdat, formula= mi ~ tissue + hist + timepoint + repl, value.var = "pi")
@@ -107,8 +115,7 @@ heatmap_all(flat_matrix, showSidebar = "tissue", hscale = "none",
 plotdat <- unique(ptm_ab_hist[,c("hist","tissue","timepoint","repl","mi","mj","pi","pij","I")])
 plotdat$mij <- paste(plotdat$mi,plotdat$mj,sep="")
 flat_matrix <- reshape2::dcast(plotdat, formula= mij ~ tissue + hist + timepoint + repl, value.var = "I")
-flat_matrix = flat_matrix[!is.na(flat_matrix[,1]),]
-
+#flat_matrix = flat_matrix[!is.na(flat_matrix[c(1:4),]),] #remove row with na
 heatmap_all(flat_matrix, showSidebar = "tissue", hscale = "none", 
             title_of_plot = "H3 variants, interplay scores", label = "interplay_scores", outdir = "plots/")
 
@@ -127,21 +134,21 @@ heatmap_all(flat_matrix, showSidebar = "tissue", hscale = "row",
 #-Crosstalk maps of K27 and K36 methylations-#
 
 ptm_ab_pos <- ptm_ab[ grepl("K27me", ptm_ab$mi) & grepl("K36me", ptm_ab$mj), ]
+ptm_ab_pos_hist <- ptm_ab_pos[ grepl("H3.3", ptm_ab_pos$hist), ]
 
-
-CrossTalkMap(ptm_ab_pos,
-             splitplot_by = "timepoint", connected = "tissue", group_by = "repl",
+CrossTalkMap(ptm_ab_pos_hist,
+             splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
              connect_dots = TRUE, with_arrows = FALSE, colcode = "pj", which_label = "mimj",
              contour_lines = TRUE, contour_labels = "short", col_scheme="legacy",
              filename_string = "K27meK36me", filename_ext = "pdf",
-             outdir = "plots/", shapecode = "tissue")
+             outdir = "plots/")
 
 
 
 
 
 ###=- SECTION 3.4 -=###
-#-Crosstalk maps and PTM abundance/interplay lineplot -#
+#-Crosstalk maps and PTM abundance/interplay lineplot-#
 
 ##################################################
 ## ALL INTERACTIONS BETWEEN 2 SELECTED POSITIONS ##
@@ -364,7 +371,7 @@ heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", titl
   }else{ #by default
     pdfHeight = 7
     lheiM = NULL
-    mar = c(5,5)
+    mar = c(15,5)
   }
   
   pdf(paste0(outdir, "heatmap_all_", label, ".pdf"), height=pdfHeight)
@@ -372,7 +379,7 @@ heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", titl
   heatmap.2(as.matrix(flat_matrix), Rowv = T, Colv = T, cexRow = 0.6, cexCol = 1,
             main = title_of_plot, trace = "none",
             scale = hscale, col=bluered(100), density.info = "density", 
-            ColSideColors = rainbow(length(colvec))[colvec], srtCol=45, margins=mar, lhei = lheiM)
+            ColSideColors = rainbow(length(colvec))[colvec], srtCol=45, margins=mar, lhei = lheiM, labRow = FALSE)
   
   dev.off()
 }
