@@ -47,6 +47,10 @@ Field | Description
 
 Documentation, including example scripts illustrating the workflow for some typical use cases.
 
+### tutorial/
+
+Tutorial to use various visualizations of CrossTalkMapper applied to mouse stem cell data sets. For a thorough description of the tutorial, see the book chapter _Exploration of proteins post-translational modification landscape and crosstalk with PTM-CrossTalkMapper_ in the Springer book _Computational Prediction of PTM sites_ (in preparation)
+
 ### mouse-tissue-analysis/
 
 Code and plots that were produced applying CrossTalkMapper to the dataset in data/ [Tvardovskiy et al., Nucleic Acids Research, 2017], covering some typical use cases.
