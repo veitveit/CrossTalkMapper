@@ -118,32 +118,25 @@ ggsave(filename = paste0("plots/ptm_distribution.pdf"), plot = p) #Save plot as 
 
 
 
-##########=- TASK 3.2 -=############
-#-Heatmaps   -#
-
-# ptm_ab_hist <- ptm_ab[grepl("H3.1", ptm_ab$hist), ]# PTM abundance of one histone variant
-# 
-# # Find 10 most abundant m_j and subset data frame
-# ptm_ab_mi_ordered <- ptm_ab_pos_mod[order(-ptm_ab_pos_mod$pj),]
-# ptm_ab_mi_uniqmj <- ptm_ab_mi_ordered[!duplicated(ptm_ab_mi_ordered$mj),]
-# ptm_ab_mi_topab <- head(ptm_ab_mi_uniqmj, n = 10)
-# topab_mj <- ptm_ab_mi_topab[, "mj"]
-# ptm_ab_pos_mod_top <- ptm_ab_pos_mod[grep(paste(topab_mj, collapse = "|"), ptm_ab_pos_mod$mj),]
+##################################=- TASK 3.2 -=##########################################
+#-Heat maps of Single PTM abundance, co-occurence, interplay score and peptide abundance-#
 
 
-## TODO Explain  idea of heatmaps and what to take from there (single versus double PTMs as information base)
+## This task presents how to create four different types of heat maps 
+## from a dataset of PTM abundances using the function heatmap_all() of CrossTalkMapper.
 
 #-Heatmap of single PTMs abundance-#
 
-plotdat <- unique(ptm_ab[, c("hist", "tissue", "timepoint", "repl", "mi", "pi")])
-flat_matrix <-
+## Prepare data
+plotdat <- unique(ptm_ab[, c("hist", "tissue", "timepoint", "repl", "mi", "pi")]) # Extract abundance data for single PTMs 'mi'
+flat_matrix <- # Convert the abundance dataframe to a flat_matrix
   reshape2::dcast(plotdat,
                   formula = mi ~ tissue + hist + timepoint + repl,
                   value.var = "pi")
-
+## Plot data
 heatmap_all(
   flat_matrix,
-  showSidebar = "tissue",
+  showSidebar = "tissue", #  
   hscale = "none",
   title_of_plot = "H3 variants, single PTM frequency",
   label = "single_ptms",
@@ -151,16 +144,16 @@ heatmap_all(
 )
 
 
-#-heatmap of Co-occurring modification frequencies-#
+#-Heatmap of Co-occurring modification frequencies-#
 
+## Prepare data
 plotdat <- unique(ptm_ab_hist[, c("hist", "tissue", "timepoint", "repl", "mi", "mj", "pi", "pij", "I")])
-
 plotdat$mij <- paste(plotdat$mi, plotdat$mj, sep = "")
 flat_matrix <-
   reshape2::dcast(plotdat,
                   formula = mij ~ tissue + hist + timepoint + repl,
                   value.var = "pij")
-
+# Plot data
 heatmap_all(
   flat_matrix,
   showSidebar = "tissue",
@@ -173,16 +166,15 @@ heatmap_all(
 
 #-Heatmap of Interplay scores-#
 
+## Prepare data
 plotdat <- unique(ptm_ab_hist[, c("hist", "tissue", "timepoint", "repl", "mi", "mj", "pi", "pij", "I")])
-
 plotdat$mij <- paste(plotdat$mi, plotdat$mj, sep = "")
 flat_matrix <-
   reshape2::dcast(plotdat,
                   formula = mij ~ tissue + hist + timepoint + repl,
                   value.var = "I")
 
-#flat_matrix = flat_matrix[!is.na(flat_matrix[c(1:4),]),] #remove row with na
-
+## Plot data
 heatmap_all(
   flat_matrix,
   showSidebar = "tissue",
@@ -195,9 +187,9 @@ heatmap_all(
 
 #-Heatmap of peptides abundances#
 
+## Prepare data (Note that in this case the unprocessed crosstalkDB dataset "mytable" is used, as the dataset "ptm_ab" does not contain quantification of peptides)
 plotdat <-
   unique(mytable[, c("tissue", "modifications", "timepoint", "repl", "quantification")])
-
 flat_matrix <-
   reshape2::dcast(
     plotdat,
@@ -206,14 +198,14 @@ flat_matrix <-
     fun.aggregate = sum
   )
 
+## Plot data
 heatmap_all(
   flat_matrix,
   showSidebar = "tissue",
   hscale = "row",
   title_of_plot = "H3 peptides",
   label = "peptides",
-  outdir = "plots/",
-  autosize = TRUE
+  outdir = "plots/"
 ) 
 
 
@@ -221,24 +213,25 @@ heatmap_all(
 ###=- TASK 3.3 -=###
 #-Crosstalk maps of K27 and K36 methylations-#
 
+## Filter dataset to retain PTM pairs K27/K36 with any of the 3 methylation states (me1, me2 or me3) 
 ptm_ab_pos <- ptm_ab[grepl("K27me", ptm_ab$mi) & grepl("K36me", ptm_ab$mj),]
 
-
+## Create a crosstalkmap from the filtered data frame that will be saved as a pdf in the 'plots/' folder
 CrossTalkMap(
   ptm_ab_pos,
-  splitplot_by = "timepoint",
-  connected = "tissue",
-  group_by = "repl", 
+  splitplot_by = "timepoint", # Make one crosstalk map for each time point (Irrelevant in the case of the mESCs dataset that does not contain multiple time points) 
+  connected = "tissue", # Visually connect data point accross the value condition 'tissue'
+  group_by = "repl", # Group replicates 
   connect_dots = TRUE, # Visually connect data points of a PTM pair accross conditions  
   with_arrows = FALSE, # Use arrow in connection lines  
   colcode = "pj", # Variable to be color encoded ('pi' 'pj' or 'pij')
   which_label = "mimj", # Data points' labels to be diplayed in the crosstalk map ('mj', 'mij')
-  contour_lines = TRUE, 
-  contour_labels = "short",
-  col_scheme = "legacy", 
-  filename_string = "K27meK36me",
-  filename_ext = "pdf",
-  outdir = "plots/"
+  contour_lines = TRUE, # Display Interplay score lines 
+  contour_labels = "short", 
+  col_scheme = "legacy",  
+  filename_string = "K27meK36me", 
+  filename_ext = "pdf", # Export as pdf
+  outdir = "plots/" # output directory 
 )
 
 
@@ -270,7 +263,7 @@ for (pos_comb in pos_combs) {
   ptm_ab_pos_mod <-
     ptm_ab[grepl(pos_comb[[1]], ptm_ab$mi) &
              grepl(pos_comb[[2]], ptm_ab$mj), ]
-  #ptm_ab_pos_mod <- ptm_ab_pos_mod[grepl(c("mESCs|mESCs Suz12-/-"), ptm_ab_pos_mod$tissue), ]
+  
   
   
   # Show all
@@ -292,19 +285,21 @@ for (pos_comb in pos_combs) {
   )
   
   
-  #find 10 most abundant m_j and subset data frame
+  # Find 10 most abundant m_j and subset data frame
   ptm_ab_mi_ordered <- ptm_ab_pos_mod[order(-ptm_ab_pos_mod$pj), ]
   ptm_ab_mi_uniqmj <-
     ptm_ab_mi_ordered[!duplicated(ptm_ab_mi_ordered$mj), ]
   ptm_ab_mi_topab <- head(ptm_ab_mi_uniqmj, n = 10)
   topab_mj <- ptm_ab_mi_topab[, "mj"]
   ptm_ab_pos_mod_top <-
-    ptm_ab_pos_mod[grep(paste(topab_mj, collapse = "|"), ptm_ab_pos_mod$mj),]
+  ptm_ab_pos_mod[grep(paste(topab_mj, collapse = "|"), ptm_ab_pos_mod$mj),]
   
+  # Retain data for WT and Suz12-/- conditions only 
+  ptm_ab_pos_mod_top_cond <- ptm_ab_pos_mod[grepl(c("mESCs|mESCs Suz12-/-"), ptm_ab_pos_mod$tissue), ]
   
-  # Plot top 10 most abundant m_j
+  # Plot top 10 most abundant PTM pair
   CrossTalkMap(
-    ptm_ab_pos_mod_top,
+    ptm_ab_pos_mod_top_cond,
     splitplot_by = par_splitplot_by,
     connected = par_connected,
     group_by = par_group_by,
