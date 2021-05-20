@@ -56,12 +56,13 @@ open(my $in_fh, '<', $incsv) or die("Could not open $incsv, exiting $!");
 
 while (my $inline = <$in_fh>) {
 
+	
 	chomp($inline);
 	my $out;	
 
 	if ($inline =~ /accession number/) {
 
-		$out = "$inline,\"timepoint\",\"biological replicate\"";
+		$out = "$inline,\"timepoint\",\"biological replicate\",\"tissue\"";
 
 	} else {
 
@@ -71,10 +72,15 @@ while (my $inline = <$in_fh>) {
 		my ($tissue, $time, $rep) = split(',', $map{$crdb});
 
 		my $info = $map{$crdb};
+		
+		
 
-		$out = "$inline,\"$time\",\"$rep\"";
+		my $tissue_val = (split /,/, $inline)[4];
+
+		$out = "$inline,\"$time\",\"$rep\",$tissue_val\"";
 
 	}
+	
 
 	print STDOUT "$out\n";
 
