@@ -21,9 +21,14 @@ my @timepoints = (("3 months") x 4, ("5 months") x 4, ("10 months") x 4, ("18 mo
 my @reps = ((1..4) x 3, (1..2) x 2);
 
 # create hash of CrDB ids and time points
+# print hash content to file to pass to new data prep function
 
 my %map;
 my $tissue_counter = my $timerep_counter = 0;
+
+my $cond_file = "sample_conditions.tsv";
+open(my $cond_fh, '>', $cond_file) or die("Could not open $cond_file, exiting $!");
+print $cond_fh "dataset id\ttissue\ttime point\tbiological replicate\n";
 
 for (my $crdb_nr = 62; $crdb_nr <= 129; $crdb_nr++) {
 
@@ -37,6 +42,8 @@ for (my $crdb_nr = 62; $crdb_nr <= 129; $crdb_nr++) {
 	my $crdb = "CrDB$leadzero";
 
 	$map{$crdb} = "$tissue,$time,$rep";
+	
+	print $cond_fh "$crdb\t$tissue\t$time\t$rep\n";
 
 	$timerep_counter++;
 
@@ -49,6 +56,8 @@ for (my $crdb_nr = 62; $crdb_nr <= 129; $crdb_nr++) {
 
 }
 
+close($cond_fh);
+
 # read input data and add time point and biological replicate
 
 my $incsv = $ARGV[0];
@@ -56,35 +65,28 @@ open(my $in_fh, '<', $incsv) or die("Could not open $incsv, exiting $!");
 
 while (my $inline = <$in_fh>) {
 
-	
 	chomp($inline);
 	my $out;	
 
 	if ($inline =~ /accession number/) {
 
-		$out = "$inline,\"timepoint\",\"biological replicate\",\"tissue\"";
+		$out = "$inline,\"timepoint\",\"biological replicate\"";
 
 	} else {
 
-		$inline =~ /(CrDB\d+)\"$/;
+		$inline =~ /"(CrDB\d+)"/;
 		my $crdb = $1;
 
 		my ($tissue, $time, $rep) = split(',', $map{$crdb});
 
 		my $info = $map{$crdb};
-		
-		
 
-		my $tissue_val = (split /,/, $inline)[4];
-
-		$out = "$inline,\"$time\",\"$rep\",$tissue_val\"";
+		$out = "$inline,\"$time\",\"$rep\"";
 
 	}
-	
 
 	print STDOUT "$out\n";
 
 }
 
-chomp(my @incsv = <$in_fh>);
 close($in_fh);

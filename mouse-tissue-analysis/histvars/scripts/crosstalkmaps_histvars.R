@@ -11,6 +11,13 @@ source("../ctm-functions/ptm-crosstalkmapper.R")
 # CrosstalkDB data
 ctdb_data <- "../data/mouse-tissues_ctdb_timerep_4timepoints.csv"
 
+# Output dirs
+ab_out_dir <- "histvars/data/"
+ctm_out_dir <- "histvars/crosstalkmaps/"
+line_ab_out_dir <- "histvars/lineplots_pi/"
+line_ct_out_dir <- "histvars/lineplots_ct-params/"
+# ab_out_dir <- ctm_out_dir <- line_ab_out_dir <- line_ct_out_dir <- "test/"
+
 #########################
 ## Data Pre-Processing ##
 #########################
@@ -26,7 +33,7 @@ data$cell.type...tissue <- paste0(toupper(substr(data$cell.type...tissue, 1, 1))
 ## PTM abundance calculation ##
 ###############################
 
-ptm_ab <- calcPTMab(data, outdir = "histvars/data/")
+ptm_ab <- calcPTMab(data, outdir = ab_out_dir)
 
 #####################
 ## Filter and plot ##
@@ -51,7 +58,7 @@ for (mi_pos in poi) {
     # no filter
     CrossTalkMap(ptm_ab_mi, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                      connect_dots = TRUE, with_arrows = TRUE,
-                     filename_string = paste0(mi, "_mj-all"), outdir = "histvars/crosstalkmaps/")
+                     filename_string = paste0(mi, "_mj-all"), outdir = ctm_out_dir)
 
     ## top 10/5 abundant m_j
     # rank m_i data by abundance of m_j, regardless of time point, tissue or histone variant
@@ -66,7 +73,7 @@ for (mi_pos in poi) {
 
       CrossTalkMap(midat_plot, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                        connect_dots = TRUE, with_arrows = TRUE,
-                       filename_string = paste0(mi, "_pj-top-", top), outdir = "histvars/crosstalkmaps/")
+                       filename_string = paste0(mi, "_pj-top-", top), outdir = ctm_out_dir)
     }
     
     ## line plots for change of abundance over time for each PTM m_i and histone variant
@@ -75,7 +82,7 @@ for (mi_pos in poi) {
       mi_dat_tis <- mi_dat[mi_dat$tissue == tissue,]
       for (hist in unique(mi_dat_tis$hist)) {
         mi_dat_tis_hist <- mi_dat_tis[mi_dat_tis$hist == hist,]
-        line_ab(mi_dat_tis_hist, outdir = "histvars/lineplots_pi/")
+        line_ab(mi_dat_tis_hist, outdir = line_ab_out_dir)
       }
     }
     
@@ -86,7 +93,7 @@ for (mi_pos in poi) {
         ptm_ab_mimj_tis <- ptm_ab_mimj[ptm_ab_mimj$tissue == tissue,]
         for (hist in unique(ptm_ab_mimj_tis$hist)) {
           ptm_ab_mimj_tis_hist <- ptm_ab_mimj_tis[ptm_ab_mimj_tis$hist == hist,]
-          line_ct(ptm_ab_mimj_tis_hist, outdir = "histvars/lineplots_ct-params/")
+          line_ct(ptm_ab_mimj_tis_hist, outdir = line_ct_out_dir)
         }
       }
     }
@@ -109,14 +116,14 @@ for (pos_comb in pos_combs) {
   ptm_ab_pos <- ptm_ab[grepl(pos_comb[[1]], ptm_ab$mi) & grepl(pos_comb[[2]], ptm_ab$mj),]
   CrossTalkMap(ptm_ab_pos, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                    connect_dots = TRUE, with_arrows = TRUE, which_label = "mimj",
-                   filename_string = paste0(paste0(pos_comb, collapse = '-'), "_all-ptms"), outdir = "histvars/crosstalkmaps/")
+                   filename_string = paste0(paste0(pos_comb, collapse = '-'), "_all-ptms"), outdir = ctm_out_dir)
   # only show methylations
   mod <- "me"
   ptm_ab_pos_mod <- ptm_ab_pos[grepl(mod, ptm_ab_pos$mi) & grepl(mod, ptm_ab_pos$mj),]
   if (nrow(ptm_ab_pos_mod) > 0) {
     CrossTalkMap(ptm_ab_pos_mod, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                      connect_dots = TRUE, with_arrows = TRUE, which_label = "mimj",
-                     filename_string = paste0(paste0(pos_comb, collapse = '-'), "_", mod), outdir = "histvars/crosstalkmaps/")
+                     filename_string = paste0(paste0(pos_comb, collapse = '-'), "_", mod), outdir = ctm_out_dir)
   }
 }
 
@@ -141,4 +148,4 @@ for (pos_comb in seq(1, ncol(pos_combs))) {
 }
 CrossTalkMap(ptm_ab_pos, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                  connect_dots = TRUE, with_arrows = TRUE, which_label = "mimj",
-                 filename_string = paste0(paste0(poi, collapse = '-'), "_all-ac"), outdir = "histvars/crosstalkmaps/")
+                 filename_string = paste0(paste0(poi, collapse = '-'), "_all-ac"), outdir = ctm_out_dir)

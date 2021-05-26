@@ -1,7 +1,5 @@
-
-setwd(dirname(dirname(rstudioapi::getSourceEditorContext()$path)))
-# assumes working dir to be in doc/
-source("../ctm-functions/ptm-crosstalkmapper_new.R")
+# assumes working dir to be in mouse-tissue-analysis/
+source("../ctm-functions/ptm-crosstalkmapper.R")
 
 # Case (1):
 # Histone H3 total, averaged replicates
@@ -13,18 +11,16 @@ source("../ctm-functions/ptm-crosstalkmapper_new.R")
 data <- prepPTMdata("../data/mouse-tissues_ctdb_timerep_4timepoints.csv", histvars = FALSE, avrepls = TRUE)
 
 # shorten tissue labels, specific for dataset PXD005300
-data$tissue <- gsub(".*, ", "", data$tissue)
-data$tissue <- paste0(toupper(substr(data$tissue, 1, 1)),
-                                  substr(data$tissue, 2, nchar(data$tissue)))
-
-
+data$cell.type...tissue <- gsub(".*, ", "", data$cell.type...tissue)
+data$cell.type...tissue <- paste0(toupper(substr(data$cell.type...tissue, 1, 1)),
+                                  substr(data$cell.type...tissue, 2, nchar(data$cell.type...tissue)))
 
 ###############################
 ## PTM abundance calculation ##
 ###############################
 
 ptm_ab <- calcPTMab(data, outdir = "data/h3/")
-ptm_ab$timepoint <- as.factor(ptm_ab$timepoint)
+
 #####################
 ## Filter and plot ##
 #####################
@@ -70,21 +66,20 @@ for (mi_pos in poi) {
     mi_dat <- unique(ptm_ab_mi[, c("hist", "tissue", "timepoint", "repl", "mi", "pi")])
     for (tissue in unique(mi_dat$tissue)) {
       mi_dat_tis <- mi_dat[mi_dat$tissue == tissue,]
-      line_ab(mi_dat_tis, connected = "timepoint", outdir = "plots/h3/lineplots_pi/")
+      line_ab(mi_dat_tis, outdir = "plots/h3/lineplots_pi/")
     }
     
     ## line plots for abundances, co-occurrence, interplay score for each tissue, each mimj combination
     for (mj in unique(ptm_ab_mi$mj)) {
       ptm_ab_mimj <- ptm_ab_mi[ptm_ab_mi$mj == mj,]
-      
-      for (tissue in unique(ptm_ab_mimj$tissue)[1]) {
+      for (tissue in unique(ptm_ab_mimj$tissue)) {
         ptm_ab_mimj_tis <- ptm_ab_mimj[ptm_ab_mimj$tissue == tissue,]
-        print("ptm_ab_mimj_tis before linect")
-        print(ptm_ab_mimj_tis)
-        line_ct(ptm_ab_mimj_tis, connected = "timepoint",  outdir = "plots/h3/lineplots_ct-params/")
+        line_ct(ptm_ab_mimj_tis, outdir = "plots/h3/lineplots_ct-params/")
       }
     }
+    
   }
+  
 }
 
 ## ALL INTERACTIONS BETWEEN 2 SELECTED POSITIONS ##
@@ -109,4 +104,3 @@ for (pos_comb in pos_combs) {
                  filename_string = paste0(paste0(pos_comb, collapse = '-'), "_", mod), outdir = "plots/h3/crosstalkmaps/")
   }
 }
-

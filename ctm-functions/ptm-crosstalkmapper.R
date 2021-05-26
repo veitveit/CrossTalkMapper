@@ -1,23 +1,249 @@
 library(tidyr)
+library(stringr)
 library(tools)
+library(gtools)
 library(ggplot2)
 library(scales)
 library(metR)
 library(ggrepel)
 library(gridExtra)
+library(RCurl)
 
 # sample = one combination of tissue + timepoint/any conditions (+ replicate before averaging)
 # for each sample, all quantifications have to add up to 1
 
+##########################
+## Hard-coded specifics ##
+##########################
+
+# columns required in the input file
+req_cols <- c("protein.name","cell.type...tissue","modifications","quantification", "timepoint", "biological.replicate")
+
+################################
+## CrosstalkDB Pre-processing ##    Proteoform abundances
+################################
+
+extract_cond_col_names <- function(data_cond) {
+  # extract keys from comma-separated key = value pairs string in conditions column
+  match_matrices <- str_match_all(data_cond$conditions, "(^|,\\s*)([^=]+[^\\s])\\s*=")
+  # match matrices contain [,1] entire match, [,2] first capture (beginning / comma),
+  # [,3] second capture (condition name before =) --> extract this one
+  uniq_captures <- unique(lapply(match_matrices, function(x) x[,3]))
+  if (length(uniq_captures) == 1) {
+    conditions <- unlist(uniq_captures)
+    condition_col_names <- make.names(conditions)
+  } else {
+    stop("Condition names are not the same for all samples! Exiting.")
+  }
+  return(condition_col_names)
+}
+
+split_cond_col <- function(data_cond) {
+  # split condition column into individual columns at ","
+  # following the pattern <column name> = <value>
+  cond_col_names <- extract_cond_col_names(data_cond)
+  # split condition column into individual columns with column names from <condition_cols> vector
+  data_cond_sep <- separate(data_cond, "conditions", into = cond_col_names, sep = "\\s*,\\s*")
+  data_cond_sep[cond_col_names] <- lapply(data_cond_sep[cond_col_names], gsub, pattern = "^.*=\\s*", replacement = "")
+  return(data_cond_sep)
+}
+
+split_CrDB_descr_col <- function(data) {
+  # extract condition string from Description column into new column
+  data_cond <- separate(data, "Description", into = c("description", "conditions"),
+                        sep = "\\s*\\[")
+  data_cond$conditions <- gsub("\\]$", "", data_cond$conditions)
+  return(data_cond)
+}
+
+add_condition_cols_from_descr <- function(data) {
+  # extract conditions from Description field and add condition columns
+  # required format: comma-separated list of named arguments in square brackets
+  # e.g. [time point = 3 months, biological replicate = 1, tissue = Brain]
+  data_cond <- split_CrDB_descr_col(data)
+  data_cond_sep <- split_cond_col(data_cond)
+  return(data_cond_sep)
+}
+
+add_condition_cols_from_file <- function(data, cond_info) {
+  # extract conditions from conditions file content
+  # add as new columns to data frame based on the dataset ID
+  data_cond <- merge(data, cond_info, by = "dataset.id")
+  return(data_cond)
+}
+
+rm_pepseq_err <- function(data) {
+  # from data frame, remove all rows that contain "!" in the peptide.Sequence field
+  # as these are considered error messages
+  nr_errs <- length(grep("!", data$peptide.Sequence))
+  if (nr_errs > 0) {
+    data <- data[!grepl("!", data$peptide.Sequence),]
+    warning(paste("Removed", nr_errs, "data row(s) with error messages containing \"!\" in peptide Sequence field"))
+  }
+  return(data)
+}
+
+extract_uniprot_acnr <- function(acnr_str) {
+  # extract accession number from string
+  # regular expression for UniProt accession numbers taken from https://www.uniprot.org/help/accession_numbers
+  uniprot_ac_regex <- "[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2}"
+  acnr <- regmatches(acnr_str, regexpr(uniprot_ac_regex, acnr_str))
+  return(acnr)
+}
+
+dl_CrDBdata <- function(crdb_ids, dl_test) {
+  # download dataset(s) with given IDs from CrosstalkDB
+  # crdb_ids is a vector of CrDB identifiers
+  # returns one data frame including data from all downloaded datasets
+  tab <- data.frame()
+  for (crdb_id in crdb_ids) {
+    ## DEBUG
+    #crdb_url <- "https://www.uniprot.org/uniref/UniRef90_P99999.tab"
+    #crdb_url <- "https://www.uniprot.org/uniref/UniRe90_P99999.tab"
+    # crdb_url <- paste0("http://binfclust3.pc.sdu.dk:8080/histonebase.jsfpresentation/searchHistone.xhtml?datasetid=",
+    #                                   crdb_id, "&filetype=csv")
+    # if (url.exists(crdb_url)) {
+    #   ## DEBUG
+    #   print(head(read.csv(crdb_url, sep = "\t")))
+    #   #tab <- rbind(tab, read.csv(crdb_url, stringsAsFactors = FALSE))
+    # } else {
+    #   warning(paste(crdb_url, "does not exist, skipping identifier", crdb_id))
+    # }
+    ## DEBUG
+    print(paste0("http://binfclust3.pc.sdu.dk:8080/histonebase.jsfpresentation/searchHistone.xhtml?datasetid=",
+                 crdb_id, "&filetype=csv"))
+  }
+  if (dl_test == "old") {
+    ## DEBUG using old data format
+    tab <- read.csv("~/Arbeit/prgroup-sdu/projects/CrossTalkMapper-dev/data/mouse-tissues_ctdb.csv",
+                    stringsAsFactors = FALSE)
+  } else if (dl_test == "new") {
+    ## DEBUG using new data format
+    tab <- head(read.csv("~/Arbeit/prgroup-sdu/projects/CrossTalkMapper-dev/test/new_htable.csv",
+                         stringsAsFactors = FALSE))
+  } else if (dl_test == "new_descr") {
+    ## DEBUG using new data format, test condition extraction from Description
+    tab <- read.csv("~/Arbeit/prgroup-sdu/projects/CrossTalkMapper-dev/test/new_htable_test-cond.csv",
+                         stringsAsFactors = FALSE)
+  }
+  return(tab)
+}
+
+gen_CrDB_ids <- function(id_ints) {
+  # generate CrosstalkDB identifiers from a vector of integers (e.g. provide "13" to return "CrDB000013")
+  CrDBid <- sprintf("CrDB%06d", id_ints)
+  return(CrDBid)
+}
+
+get_crdb_ids_from_ints <- function(crdb_ints_ids) {
+  # check if identifiers or integers were provided
+  # if integers were provided, construct identifiers
+  if (any(grepl("CrDB", crdb_ints_ids))) {
+    crdb_ids <- crdb_ids
+  } else if (all(crdb_ints_ids == floor(crdb_ints_ids))) {
+    crdb_ids <- gen_CrDB_ids(crdb_ints_ids)
+  } else {
+    stop("crdb_ints_ids needs to be a vector of either CrDB identifiers or the respective integers!")
+  }
+  return(crdb_ids)
+}
+
+get_crdb_ids <- function(crdb_ints_ids, cond_info) {
+  # check if either CrDB IDs or conditions file provided
+  if (!is.null(crdb_ints_ids) & is.null(cond_info)) {
+    # identifiers were provided or are constructed from integers
+    crdb_ids <- get_crdb_ids_from_ints(crdb_ints_ids)
+  } else if (!is.null(cond_info) & is.null(crdb_ints_ids)) {
+    # extract identifiers from conditions file content
+    crdb_ids <- cond_info$dataset.id
+  } else {
+    stop(paste("Please provide either a vector of CrosstalkDB identifiers or",
+               "a file containing CrosstalkDB identifiers and the sample conditions!",
+               "Exiting.", sep = "\n"))
+  }
+  return(crdb_ids)
+}
+
+prep_CrDBdata <- function(crdb_ints_ids = NULL, rm_pepseq_err = TRUE,
+                          cond_file = NULL, cond_file_sep = "\t",
+                          out_file = NULL,
+                          dl_test = c("old", "new", "new_descr")) {
+  ## download and clean up datasets from CrosstalkDB
+  ## sample conditions can be extracted either from the Description field of the downloaded datasets
+  ##    or from the provided conditions file
+  ## crdb_ints_ids can be a vector of CrDB identifiers or a vector of the respective integers
+  ## cond_file is a <cond_file_sep>-delimited file containing
+  ##    CrosstalkDB identifiers and their respective sample conditions
+  ##    format (header required): <dataset id><condition1><condition2><condition3>
+  # if provided, read <cond_file_sep>-delimited conditions file
+  if (!is.null(cond_file)) {
+    cond_info <- read.csv(cond_file, sep = cond_file_sep)
+  } else {
+    cond_info <- NULL
+  }
+  # get CrDB identifiers from integers, conditions file, or identifiers directly
+  crdb_ids <- get_crdb_ids(crdb_ints_ids, cond_info)
+  # download datasets
+  data <- dl_CrDBdata(crdb_ids, dl_test = dl_test)
+  # remove selection column (no content)
+  data$X <- NULL
+  # clean up accession number
+  data$accession.number <- extract_uniprot_acnr(data$accession.number)
+  if (rm_pepseq_err == TRUE) {
+    # remove errors containing "!" in peptide.Sequence and warn
+    # consequently, these fractions are treated as "unmodified" later on
+    data <- rm_pepseq_err(data)
+  }
+  # add condition columns
+  if (is.null(cond_file)) {
+    # extract conditions from Description field
+    data_cond <- add_condition_cols_from_descr(data)
+  } else {
+    # extract conditions from provided conditions file
+    # this is mainly intended for use with previously available datasets without Description field
+    data_cond <- add_condition_cols_from_file(data, cond_info)
+  }
+  # print final table to file
+  if (!is.null(out_file)) {
+    # write.table(data_cond, paste0(outdir, "/crdb_data.tsv"), quote = FALSE, sep = "\t", row.names = FALSE)
+    write.table(data_cond, file = out_file, quote = FALSE, sep = "\t", row.names = FALSE)
+  }
+  return(data_cond)
+}
+
+
 #########################
-## Data Pre-processing ##
+## Data Pre-processing ##   Proteoform abundances
 #########################
 
-cleanup_ctdb <- function(data) {
-  # remove unnecessary columns from CrosstalkDB-derived .csv files
-  data[, c("X", "accession.number", "species", "number.of.modifications", "date", "user", "MS.resolution", "Link.to.original.data",
-             "peptide.Sequence", "dataset.id")] <- list(NULL)
+cleanup_cols <- function(data) {
+  # remove unnecessary columns from CrosstalkDB-derived peptide data
+  all_cols <- colnames(data)
+  rm_cols <- c("accession.number", "species", "cell.type...tissue", "number.of.modifications", "date", "user",
+               "MS.resolution", "Link.to.original.data", "peptide.Sequence", "dataset.id")
+  data[, rm_cols] <- list(NULL)
   return(data)
+}
+
+rename_termini <- function(mods) {
+  ## Input: mods is a vector of modifications.
+  ## Output: vector of modifications where leading and trailing modifications without positional information
+  ## (N- and C-terminal modifications) are prepended by "M0" and "C9999", resp.
+  ## (e.g. "acK14acac" --> "M0acK14acC9999ac").
+  ## Assumes that modification identifiers are either
+  ## 2 lowercase letters with (me1) our without a trailing digit (ac) or
+  ## 3 lowercase letters without trailing digit (cit). Also see CrosstalkDB's Table of modifications.
+  ambig_termini <- grep("^[a-z]{2,}\\d*$", mods, value = TRUE)
+  if (length(ambig_termini) > 0) {
+    # if a histone carries only a single terminal modification, terminus cannot be determined 
+    warning(paste("The following individual modifications are assumed to be N-terminal modifications:",
+                  paste(ambig_termini, collapse = ", "),
+                  "If this is incorrect, please denote N-terminal modifications as M0<mod>",
+                  "and C-terminal modifications similarly as <aminoacid><position><mod> in the input.", sep = "\n"))
+  }
+  mods_n <- gsub("^([a-z]+\\d*)", "M0\\1", mods)
+  mods_n_c <- gsub("([a-z]{2,}\\d*)([a-z]{2,}\\d*)$", "\\1C9999\\2", mods_n)
+  return(mods_n_c)
 }
 
 zero_imp <- function(data) {
@@ -27,7 +253,8 @@ zero_imp <- function(data) {
   # (quantification = 0 if not measured)
   # only combinations of tissue, timepoint and replicate that actually exist in the dataset are included
   # (relevant in case of differing samples numbers for different conditions, e.g. fewer time points for a subset of tissues)
-  data_0 <- complete(data, nesting(cell.type...tissue, timepoint, biological.replicate), protein.name, modifications,
+  # data_0 <- complete(data, nesting(cell.type...tissue, timepoint, biological.replicate), protein.name, modifications,
+  data_0 <- tidyr::complete(data, nesting(tissue, time.point, biological.replicate), protein.name, modifications,
                      fill = list(quantification = 0))
   return(data_0)
 }
@@ -40,7 +267,7 @@ av_repls <- function(data) {
   return(avdata)
 }
 
-histvarquant <- function(data) {
+histvarquant <- function(data, outdir) {
   # calculate histone variant abundances for each combination of conditions
   histvarquants <- data.frame()
   histvarquants_n <- 0
@@ -64,12 +291,14 @@ histvarquant <- function(data) {
     }
   }
   colnames(histvarquants) <- c("protein.name", "cell.type...tissue", "timepoint", "histvarquant", "biological.replicate")
+  # write to file
+  write.table(histvarquants, paste0(outdir, "/histvar-abundances.tsv"), quote = FALSE, sep = "\t", row.names = FALSE)
   return(histvarquants)
 }
 
-norm_by_histvar <- function(data) {
+norm_by_histvar <- function(data, outdir) {
   # calculate histone variant abundances for all conditions
-  histvarquants <- histvarquant(data)
+  histvarquants <- histvarquant(data, outdir)
   # normalize peptide abundances by histone variant abundances
   adj_data <- merge(data, histvarquants)
   adj_data$quantification <- adj_data$quantification / adj_data$histvarquant
@@ -77,35 +306,64 @@ norm_by_histvar <- function(data) {
   return(adj_data)
 }
 
+extract_histnames <- function(histvar_names) {
+  # assumes histvar_names contain common histone symbols the form of "H3.3" or "H2A.X"
+  # removes the specifiers of the histone variants to get the respective histone names for labels after averaging
+  # i.e. find "Hx" or "Hxx" and remove the following ".x"
+  ## alternatively for uncommon cases: let the name be specified as argument
+  hist_names <- gsub("(H\\w{1,3})\\.\\w", "\\1", histvar_names)
+  return(hist_names)
+}
+
 sum_histvar_quants <- function(data) {
-  # for each sample, sum up quantifications of both histone variants to get values for H3 total
+  # for each sample, sum up quantifications of both histone variants to get values for histone total
   sumdata <- aggregate(data$quantification,
                        by = data[c("cell.type...tissue", "modifications", "timepoint", "biological.replicate")], sum)
   names(sumdata)[names(sumdata) == 'x'] <- "quantification"
-  sumdata$protein.name <- "H3"
+  # extract histone name from variants
+  histname <- unique(extract_histnames(unique(data$protein.name)))
+  if (length(histname) == 1) {
+    sumdata$protein.name <- histname
+  } else {
+    # if histone name cannot be extracted, assign first protein name to all
+    sumdata$protein.name <- head(data$protein.name, n = 1)
+    warning("Could not extract a common histone name from histone variants. Please make sure your protein names contain the histone identifier in the form of \"Hx.x\" or \"Hxx.x\" (e.g. \"H3.3\" or \"H2A.X\").")
+  }
   return(sumdata)
 }
 
-prepPTMdata <- function(csv, histvars = TRUE, avrepls = TRUE) {
+
+# prepPTMdata <- function(csv, histvars = TRUE, avrepls = TRUE) {
+prepPTMdata <- function(ptm_data, histvars = TRUE, avrepls = TRUE) {
   # load data derived from CrosstalkDB (or in the respective format) and remove unnecessary columns
   # normalize according to histone variants, unless histvars = FALSE (for plotting H3 total data)
   # average, unless avrepls = FALSE (for comparison of replicates)
+  # ptm_data is either a data frame produced by prep_CrDBdata() or a csv file with CrosstalkDB-like structure
   
-  data <- read.csv(csv, stringsAsFactors = FALSE)
-  okdata <- cleanup_ctdb(data)
+  # read data from file or data frame
+  if (is.character(ptm_data)) {
+    data <- read.csv(ptm_data, stringsAsFactors = FALSE)
+  } else if (is.data.frame(ptm_data)) {
+    data <- ptm_data
+  } else {
+    stop("ptm_data needs to be a data frame generated by prep_CrDBdata() or a csv file with CrosstalkDB-like structure! Exiting.")
+  }
+  
+  okdata <- cleanup_cols(data)
+  okdata$modifications <- rename_termini(okdata$modifications)
   okdata_0 <- zero_imp(okdata)
   
   if (histvars == TRUE) {
-    adj_data <- norm_by_histvar(okdata_0)
+    adj_data <- norm_by_histvar(okdata_0, outdir)   ## check if it is necessary to pass outdir (compare to req_cols)
   } else {
     adj_data <- sum_histvar_quants(okdata_0)
   }
   
   if (avrepls == TRUE) {
     adj_data <- av_repls(adj_data)
-  } else {
-    adj_data <- adj_data
-  }
+  } #else {
+    # adj_data <- adj_data
+  # }
   
   return(adj_data)
   
@@ -116,7 +374,71 @@ prepPTMdata <- function(csv, histvars = TRUE, avrepls = TRUE) {
 ## PTM abundance calculation ##
 ###############################
 
-calcPTMab <- function(pepdata, outdir = getwd()) {
+pi_trans_eq <- function(pi, pj, pij) {
+  # calculate transformed abundance for pi
+  # pi, pij != 0; pj != 1; pi != pij
+  return(pi * (pi - pij) / ((1-pj) * pij))
+}
+
+pj_trans_eq <- function(pi, pj, pij) {
+  # calculate transformed abundance for pj
+  # pj, pij != 0; pi != 1; pj != pij
+  return(pj * (pj - pij) / ((1-pi) * pij))
+}
+
+calc_trans_ab <- function(pi, pj, pij, tol = 0.00000000001) {
+  # calculate transformed individual abundances pi_trans and pj_trans, taking all special cases into consideration
+  if (isTRUE(all.equal(pi, 0, tolerance = tol)) | isTRUE(all.equal(pj, 0, tolerance = tol))) {
+    # at least one PTM is not present at all --> co-occurrence not defined (as opposed to pij = 0 when both PTMs are present)
+    pi_trans <- pj_trans <- NaN
+  } else if (isTRUE(all.equal(pij, 0, tolerance = tol))) {
+    # k/0
+    pi_trans <- pj_trans <- Inf
+  } else if (isTRUE(all.equal(pi, pj, tolerance = tol)) & isTRUE(all.equal(pi, pij, tolerance = tol))) {
+    # all three abundances equal
+    if (isTRUE(all.equal(pi, 1, tolerance = tol))) {
+      # both modifications on all histones (0/0)
+      pi_trans <- pj_trans <- NaN
+    } else {
+      # perfect co-occurrence on fewer than all histones (0/k)
+      pi_trans <- pj_trans <- 0
+    }
+  } else if (isTRUE(all.equal(pi, pij, tolerance = tol))) {
+    # one individual abundance is equal to co-occurrence
+    if (isTRUE(all.equal(pj, 1, tolerance = tol))) {
+      # other modification on all histones
+      pi_trans <- NaN     # 0/0
+      pj_trans <- pj_trans_eq(pi, pj, pij)
+    } else if (isTRUE(all.equal(pi, 1, tolerance = tol)) | isTRUE(all.equal(pij, 1, tolerance = tol))) {
+      # then pij is also 1, and other way around
+      pi_trans <- pj_trans <- 0
+    } else {
+      # other modification on fewer than all histones
+      pi_trans <- 0
+      pj_trans <- pj_trans_eq(pi, pj, pij)
+    }
+  } else if (isTRUE(all.equal(pj, pij, tolerance = tol))) {
+    # one individual abundance is equal to co-occurrence
+    if (isTRUE(all.equal(pi, 1, tolerance = tol))) {
+      # other modification on all histones
+      pi_trans <- pi_trans_eq(pi, pj, pij)
+      pj_trans <- NaN
+    } else if (isTRUE(all.equal(pj, 1, tolerance = tol)) | isTRUE(all.equal(pij, 1, tolerance = tol))) {
+      # then pij is also 1, and other way around
+      pi_trans <- pj_trans <- 0
+    } else {
+      # other modification on fewer than all histones
+      pi_trans <- pi_trans_eq(pi, pj, pij)
+      pj_trans <- 0
+    }
+  } else {
+    pi_trans <- pi_trans_eq(pi, pj, pij)
+    pj_trans <- pj_trans_eq(pi, pj, pij)
+  }
+  return(list("pi_trans" = pi_trans, "pj_trans" = pj_trans))
+}
+
+calcPTMab <- function(pepdata, skip_0ab = TRUE, skip_0co = TRUE, outdir = getwd()) {
   
   # make list of all individual modifications present in the dataset
   modlist <- splitCombMod(pepdata$modifications)
@@ -139,32 +461,35 @@ calcPTMab <- function(pepdata, outdir = getwd()) {
             
             # calculate relative abundance p_i of PTM m_i
             pi <- sum(mi_combmod$quantification)
-            if (pi == 0) {
+            if (skip_0ab == TRUE & pi == 0) {
               next
             }
-
+            
             # collect all interacting individual modifications m_j (this includes m_i)
             mjs_uniq <- splitCombMod(mi_combmod$modifications)
-
+            
             for (mj in mjs_uniq) {
               
               if (mj == mi) {
                 next
               }
-
+              
               # calculate relative abundance p_j of PTM m_j
               pj <- sum(repldat[grep(mj, repldat$modifications),"quantification"])
+              if (skip_0ab == TRUE & pj == 0) {
+                next
+              }
               # calculate co-occurrence p_ij
               pij <- sum(mi_combmod[grep(mj, mi_combmod$modifications),"quantification"])
-              if (pj == 0 | pij == 0) {
+              if (skip_0co == TRUE & pij == 0) {
                 next
               }
               # transform abundances
-              pi_hat <- pi * (pi - pij) / ((1-pj) * pij)
-              pj_hat <- pj * (pj - pij) / ((1-pi) * pij)
+              trans_abs <- calc_trans_ab(pi, pj, pij)
+              pi_hat <- trans_abs$pi_trans
+              pj_hat <- trans_abs$pj_trans
               # calculate interplay score from transformed abundances
               I <- I_trans(pi_hat, pj_hat)
-
               # add all values in a new row to ptm dataframe
               ab_n <- ab_n+1
               values <- list(hist, tissue, timepoint, repl, mi, pi, mj, pj, pij, pi_hat, pj_hat, I)
@@ -179,9 +504,14 @@ calcPTMab <- function(pepdata, outdir = getwd()) {
   }
   
   colnames(ab) <- c("hist", "tissue", "timepoint", "repl", "mi", "pi", "mj", "pj", "pij", "pi_hat", "pj_hat", "I")
+  ab$tissue <- as.factor(ab$tissue)
   
+  # force write.table() to print NaN instead of NA and rename C-terminus
+  ab_print <- lapply(ab, as.character)
+  ab_print$mi <- rename_Cterm_for_output(ab_print$mi)
+  ab_print$mj <- rename_Cterm_for_output(ab_print$mj)
   # print data to file
-  write.table(ab, paste0(outdir, "/ptm-abundances.tab"), quote = FALSE, sep = "\t", row.names = FALSE)
+  write.table(ab_print, paste0(outdir, "/ptm-abundances.tab"), quote = FALSE, sep = "\t", row.names = FALSE)
   
   return(ab)
   
@@ -415,12 +745,12 @@ add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_schem
       p <- base_plot + scale_color_gradientn(colours = c("#00BFC4", "#1A2980", "#B06AB3"),
                                              limits = c(min(all_data$colcode), max(all_data$colcode)))
     } else {
-      warning("Unknown argument to col_scheme")
+      warning("Unknown argument to col_scheme in add_point_col()")
       return()
     }
     p <- p + guides(color = guide_colorbar(order = 1), fill = guide_colorbar(order = 2))
   } else {
-    p <- base_plot + scale_color_discrete() +
+    p <- base_plot + scale_color_discrete(limits = levels(subgroup_data[,colcode]), breaks = sort(unique(subgroup_data[,colcode]))) +
       guides(color = guide_legend(order = 1), fill = guide_colorbar(order = 2))
   }
   return(p)
@@ -428,19 +758,31 @@ add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_schem
 
 add_col_legend_label <- function(base_plot, colcode) {
   # formatting of color-code legend label
-  # assuming colcode is "pxyz", returns labels as "p[xyz]" in the plot legend (xyz as subscript to p)
-  subscr <- gsub("p", "", colcode)
-  col_label <- bquote(p[.(subscr)]) #expression(p[subscr])
+  # assuming colcode is "pi", "pj" or "pij", returns labels as "p[xy]" in the plot legend (xy as subscript to p)
+  # otherwise, just capitalize first character
+  if (colcode == "pi" || colcode == "pj" || colcode == "pij") {
+    colcode <- gsub("p", "p_", colcode)
+  }
+  if (grepl("_", colcode) == TRUE) {
+    string_split <- strsplit(colcode, "_")
+    normalscr <- unlist(string_split)[[1]]
+    subscr <- unlist(string_split)[[2]]
+    col_label <- bquote(.(normalscr)[.(subscr)])
+  } else {
+    col_label <- paste0(toupper(substring(colcode, 1, 1)), substring(colcode, 2))
+  }
   p <- base_plot + labs(color = col_label)
   return(p)
 }
 
 add_points <- function(base_plot, data) {
+  # rename C-terminus
+  data$label <- rename_Cterm_for_output(data$label)
   # add data points and labels to plot
   p <- base_plot +
     geom_point(data = data, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 1) +
     geom_text_repel(data = data, mapping = aes(x = pi_hat, y = pj_hat, label = label, color = colcode),
-                    size = 3, segment.size = 0.025)
+                    size = 3, segment.size = 0.025, show.legend = FALSE)
   return(p)
 }
 
@@ -448,13 +790,15 @@ add_paths <- function(plot, data, with_arrows) {
   # add paths beween data points, if specified with arrows
   for (mi in sort(unique(data$mi))) {
     for (mj in sort(unique(data$mj))) {
-      mimj_connected <- data[data$mi == mi & data$mj == mj,]
-      # if mj present at at least two time points, connect them by arrow (or for replicates by line only)
-      if (nrow(mimj_connected) > 1 && with_arrows == TRUE) {
-        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5,
+      for (group in unique(data$group_by)) {
+        mimj_connected <- data[data$mi == mi & data$mj == mj & data$group_by == group,]
+        # if mj present at at least two time points, connect them by arrow (or for replicates by line only)
+        if (nrow(mimj_connected) > 1 && with_arrows == TRUE) {
+          plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5,
                                    arrow = arrow(length = unit(0.18, "cm")))
-      } else if (nrow(mimj_connected) > 1 && with_arrows == FALSE) {
-        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5)
+        } else if (nrow(mimj_connected) > 1 && with_arrows == FALSE) {
+          plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5)
+        }
       }
     }
   }
@@ -462,7 +806,7 @@ add_paths <- function(plot, data, with_arrows) {
 }
 
 plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_string, filename_ext) {
-  ## generate multiplot from list of plots, including .tab file of contained data
+  ## generate multiplot from list of plots, as well as a .tab file of the contained data
   ## ptm_data is used to calculate the theoretical number of individual plots, since some in the list might be empty
   
   # calculate number of multi plot columns and rows
@@ -493,17 +837,17 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
       lay <- cbind(lay, col)
     }
   }
-  p <- grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
+  p <- arrangeGrob(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
   
   if (is.null(filename_string)) {
     # return plot object
-    return(p)
+    return(grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay))
   } else {
     # determine histone type for file name
-    if (nrow(ptm_data[grep('\\.', ptm_data$hist),]) > 0) {
-      filename_hist <- "histvars"
+    if (length(unique(ptm_data$hist)) == 1) {
+      filename_hist <- gsub(" ", "-", unique(ptm_data$hist))
     } else {
-      filename_hist <- "H3"
+      filename_hist <- "histvars"
     }
     
     # calculate width and height of multi plot
@@ -513,10 +857,12 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
     
     # plot
     ggsave(filename = paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".", filename_ext), plot = p,
-        width = plotwidth, height = plotheight)
-
+           width = plotwidth, height = plotheight)
+    
     # print values for all plotted PTMs to file
     ptm_data_sort <- ptm_data[with(ptm_data, order(hist, tissue, mj, timepoint)),]
+    ptm_data_sort$mi <- rename_Cterm_for_output(ptm_data_sort$mi)
+    ptm_data_sort$mj <- rename_Cterm_for_output(ptm_data_sort$mj)
     write.table(ptm_data_sort,
                 paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".tab"),
                 quote = FALSE, sep = "\t", row.names = FALSE)
@@ -549,19 +895,19 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
   
   # what should be encoded how? copy respective columns
   ptm_data <- encode(ptm_data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode)
-
-  # print all x plots (histone (variants) * 4 tissues) on one page
+  
+  # print all x plots (e.g. histone (variants) * nr tissues) on one page
   plotlist_all <- list()
   plot_count_all <- 0
-
+  
   # iterate over individual conditions, making one plot for each
-  for (cond in unique(ptm_data[[splitplot_by]])) {
+  for (cond in mixedsort(unique(ptm_data[[splitplot_by]]))) {
     split_plot <- ptm_data[ptm_data[[splitplot_by]] == cond, ]
     for (hist in unique(ptm_data$hist)) {
-
+      
       hist_plot <- split_plot[split_plot$hist == hist, ]
       plot_count_all <- plot_count_all + 1
-
+      
       # make labels and order data accordingly
       hist_labeled <- make_point_labels(hist_plot, which_label = which_label)
       # make raster plot
@@ -585,16 +931,16 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
       if (connect_dots == TRUE) {
         p <- add_paths(p, hist_labeled, with_arrows)
       }
-
+      
       # add plot to list
       plotlist_all[[plot_count_all]] <- p
-
+      
     }
   }
-
-  # generate multiplot from list of plots, incl .tab of all data points contained in the plot
+  
+  # generate multiplot from list of plots, as well as .tab of all data points contained in the plot
   plot_all(plotlist_all, ptm_data, outdir, splitplot_by, filename_string, filename_ext)
-
+  
 }
 
 ################
@@ -603,11 +949,17 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
 
 ## For the standard case (over time in each tissue)
 
+order_time <- function(data) {
+  ## takes a dataframe and sorts it according to numerical values in timepoint
+  data$timepoint_nr <- as.numeric(gsub("[^0-9]*([0-9]+)[^0-9]*", "\\1", data$timepoint))
+  data_ordered <- data[order(data$timepoint_nr),]
+  return(data_ordered)
+}
+
 line_ab <- function(data, outdir = getwd()) {
   ## line plot for abundance change over time
   ## layout for manual integration into crosstalk map, hence no tissue / histone variant labels
-  data$timepoint_nr <- as.numeric(gsub(" months", "", data$timepoint))
-  data <- data[order(data$timepoint_nr),]
+  data <- order_time(data)
   tissue <- unique(data$tissue)
   hist <- unique(data$hist)
   if (length(tissue) > 1 || length(hist) > 1) {
@@ -634,9 +986,8 @@ line_ct <- function(data, outdir = getwd()) {
   ## line plot for changes of abundances, co-occurrences and interplay score over time for PTM pair in one tissue
   ## if no defined Interplay score at an individual time point, all other measures are plotted,
   ## but the interplay score data point is missing
-  data$timepoint_nr <- as.numeric(gsub(" months", "", data$timepoint))
-  data <- data[order(data$timepoint_nr),]
-  tissue <- unique(data$tissue)
+  data <- order_time(data)
+  tissue <- unique(as.character(data$tissue))
   hist <- unique(data$hist)
   if (length(tissue) > 1 || length(hist) > 1) {
     warning("Provide data for only one tissue and histone (variant)!")
@@ -689,14 +1040,19 @@ splitCombMod <- function(comblist){
   return(mod_uniq)
 }
 
-I_trans <- function(p_i_t, p_j_t, epsilon = 0.00000000001){
-  # calculates the interplay score from transformed individual PTM abundances p_i_t and p_j_t
-  if(abs(p_i_t) < epsilon || abs(p_j_t) < epsilon){
-    return(NaN)
-  } else {
-    return(log(1 / (p_i_t * p_j_t)))
-  }
+I_trans <- function(pi_t, pj_t){
+  # calculates the interplay score from transformed individual PTM abundances pi_t and pj_t
+  return(log(1 / (pi_t * pj_t)))
 }
+
+# I_trans <- function(p_i_t, p_j_t, epsilon = 0.00000000001){
+#   # calculates the interplay score from transformed individual PTM abundances p_i_t and p_j_t
+#   if (abs(p_i_t) < epsilon || abs(p_j_t) < epsilon){
+#     return(NaN)
+#   } else {
+#     return(log(1 / (p_i_t * p_j_t)))
+#   }
+# }
 
 log_seq <- function(lbound, ubound, stepnr) {
   # generates a sequence equally spaced on logarithmic scale from lower bound to upper bound with x steps
@@ -714,4 +1070,10 @@ base_breaks <- function(n = 10){
   function(x) {
     axisTicks(log10(range(x, na.rm = TRUE)), log = TRUE, n = n)
   }
+}
+
+rename_Cterm_for_output <- function(mods) {
+  ## Replace "C9999<mod>" used for internal processing by "-<mod>" in vector mods
+  mods_output <- gsub("C9999", "-", mods)
+  return(mods_output)
 }
