@@ -79,8 +79,6 @@ for (mi_pos in poi) {
       
       for (tissue in unique(ptm_ab_mimj$tissue)[1]) {
         ptm_ab_mimj_tis <- ptm_ab_mimj[ptm_ab_mimj$tissue == tissue,]
-        print("ptm_ab_mimj_tis before linect")
-        print(ptm_ab_mimj_tis)
         line_ct(ptm_ab_mimj_tis, connected = "timepoint",  outdir = "plots/h3/lineplots_ct-params/")
       }
     }
