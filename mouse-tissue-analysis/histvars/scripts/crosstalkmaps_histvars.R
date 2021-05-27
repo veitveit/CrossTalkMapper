@@ -1,5 +1,5 @@
 # assumes working dir to be in mouse-tissue-analysis/
-source("../ctm-functions/ptm-crosstalkmapper.R")
+source("../ctm-functions/ptm-crosstalkmapper_old.R")
 
 # Case (2):
 # Histone variants treated individually, averaged replicates
