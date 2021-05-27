@@ -1,4 +1,4 @@
-
+#Set working dir to doc/ (valid if this script is located in ../doc/scripts/)
 setwd(dirname(dirname(rstudioapi::getSourceEditorContext()$path)))
 # assumes working dir to be in doc/
 source("../ctm-functions/ptm-crosstalkmapper_new.R")
@@ -10,13 +10,19 @@ source("../ctm-functions/ptm-crosstalkmapper_new.R")
 ## Data Pre-Processing ##
 #########################
 
-data <- prepPTMdata("../data/mouse-tissues_ctdb_timerep_4timepoints.csv", histvars = FALSE, avrepls = TRUE)
+#import the dataset downloaded from crosstalkDB
+mytable <- read.csv("../data/mouse-tissues_ctdb_timerep_4timepoints.csv") 
+
+## Here the structure and the column names of the dataframe "my_table" are adapted to fit the requirements of the function"prepPTMdata()"  
+mytable$tissue <- mytable$cell.type...tissue  # Duplicate the column "cell.type...tissue" in a column named "tissue"  
+
+## Prepare the formatted PTM data frame for the computation of PTM abundances and interplay score
+data <- prepPTMdata(mytable, histvars = FALSE, avrepls = TRUE)
 
 # shorten tissue labels, specific for dataset PXD005300
 data$tissue <- gsub(".*, ", "", data$tissue)
 data$tissue <- paste0(toupper(substr(data$tissue, 1, 1)),
-                                  substr(data$tissue, 2, nchar(data$tissue)))
-
+                      substr(data$tissue, 2, nchar(data$tissue)))
 
 
 ###############################
@@ -25,6 +31,7 @@ data$tissue <- paste0(toupper(substr(data$tissue, 1, 1)),
 
 ptm_ab <- calcPTMab(data, outdir = "data/h3/")
 ptm_ab$timepoint <- as.factor(ptm_ab$timepoint)
+
 #####################
 ## Filter and plot ##
 #####################
