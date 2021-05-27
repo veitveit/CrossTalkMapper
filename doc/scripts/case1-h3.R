@@ -1,7 +1,7 @@
 #Set working dir to doc/ (valid if this script is located in ../doc/scripts/)
 setwd(dirname(dirname(rstudioapi::getSourceEditorContext()$path)))
 # assumes working dir to be in doc/
-source("../ctm-functions/ptm-crosstalkmapper_new.R")
+source("../ctm-functions/ptm-crosstalkmapper.R")
 
 # Case (1):
 # Histone H3 total, averaged replicates
