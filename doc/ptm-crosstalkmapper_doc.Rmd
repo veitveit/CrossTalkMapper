@@ -15,8 +15,8 @@ The code included in this document can be found as a coherent R scripts [here](h
 Set the working directory and import the PTM-CrossTalkMapper functions.
 
 ```{r, eval=FALSE}
-setwd("/path/to/CrossTalkMapper/doc/")
-source("../ctm-functions/ptm-crosstalkmapper.R")
+setwd(dirname(dirname(rstudioapi::getSourceEditorContext()$path)))
+source("../ctm-functions/ptm-crosstalkmapper_new.R")
 ```
 
 ## Data Preparation
@@ -27,19 +27,21 @@ The data file containing quantified PTM data we used here was downloaded from [C
 head(read.csv("../data/mouse-tissues_ctdb_timerep_4timepoints.csv"))
 ```
 
-The first PTM-CrossTalkMapper function `prepPTMdata()` imports and prepares the proteoform data for calculating PTM abundances. Data are imported from the path given to the function as the first argument. `histvars = FALSE` lets the function ignore individual histone variants and calculates H3 total proteoform abundances. `avrepls = TRUE` (the default) averages the abundances from biological replicates after 0-imputation of missing values. Finally, CrosstalkDB columns that are not relevant for the generation of crosstalk maps are eliminated, and a data frame with the adjusted data is returned.
+The first PTM-CrossTalkMapper function `prepPTMdata()` imports and prepares the proteoform data for calculating PTM abundances. Data are imported as a dataframe using `read.csv()` and the 'cell.type...tissue' entry is renamed to 'tissue' to fit the column names that are recognized by PTM-CrossTalkMapper. This dataframe is then passed to the function `prepPTMdata()`. `histvars = FALSE` lets the function ignore individual histone variants and calculates H3 total proteoform abundances. `avrepls = TRUE` (the default) averages the abundances from biological replicates after 0-imputation of missing values. Finally, CrosstalkDB columns that are not relevant for the generation of crosstalk maps are eliminated, and a data frame with the adjusted data is returned.
 
 ```{r}
-data <- prepPTMdata(csv = "../data/mouse-tissues_ctdb_timerep_4timepoints.csv", histvars = FALSE, avrepls = TRUE)
+mytable <- read.csv("../data/mouse-tissues_ctdb_timerep_4timepoints.csv") 
+mytable$tissue <- mytable$cell.type...tissue
+data <- prepPTMdata(mytable, histvars = FALSE, avrepls = TRUE)
 head(data)
 ```
 
 The cell type / tissue entries will later be used as labels in the crosstalk maps. Therefore, the long expressions in this example were shortened at this point.
 
 ```{r}
-data$cell.type...tissue <- gsub(".*, ", "", data$cell.type...tissue)
-data$cell.type...tissue <- paste0(toupper(substr(data$cell.type...tissue, 1, 1)),
-                                  substr(data$cell.type...tissue, 2, nchar(data$cell.type...tissue)))
+data$tissue <- gsub(".*, ", "", data$tissue)
+data$tissue <- paste0(toupper(substr(data$tissue, 1, 1)),
+                                  substr(data$tissue, 2, nchar(data$tissue)))
 head(data)
 ```
 
@@ -73,12 +75,12 @@ CrossTalkMap(ptm_ab_pos,
              splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
              connect_dots = TRUE, with_arrows = TRUE, colcode = "pj", which_label = "mimj",
              contour_lines = TRUE, contour_labels = "short",
-             filename_string = "K9-K27_all-ptms", filename_ext = "pdf",
+             filename_string = "K9-K27_all-ptms", filename_ext = "png",
              outdir = "plots/h3/crosstalkmaps/")
 ```
 
 ```{r, echo=FALSE}
-knitr::include_graphics("./plots/h3/crosstalkmaps/crosstalkmap_splitby-tissue_H3_K9-K27_all-ptms.png")
+knitr::include_graphics("./plots/h3/crosstalkmaps/crosstalkmap_splitby-tissue_Histone-H3_K9-K27_all-ptms.png")
 ```
 
 The result looks pretty crowded, so let's look at methylations only in the following. The remaining PTM pairs can be compared much easier.
@@ -89,12 +91,12 @@ CrossTalkMap(ptm_ab_pos_mod,
              splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
              connect_dots = TRUE, with_arrows = TRUE, colcode = "pj", which_label = "mimj",
              contour_lines = TRUE, contour_labels = "short",
-             filename_string = "K9-K27_all-ptms_me", filename_ext = "pdf",
+             filename_string = "K9-K27_all-ptms_me", filename_ext = "png",
              outdir = "plots/h3/crosstalkmaps/")
 ```
 
 ```{r, echo=FALSE}
-knitr::include_graphics("./plots/h3/crosstalkmaps/crosstalkmap_splitby-tissue_H3_K9-K27_all-ptms_me.png")
+knitr::include_graphics("./plots/h3/crosstalkmaps/crosstalkmap_splitby-tissue_Histone-H3_K9-K27_all-ptms_me.png")
 ```
 
 ## Considering Histone Variants
@@ -102,10 +104,10 @@ knitr::include_graphics("./plots/h3/crosstalkmaps/crosstalkmap_splitby-tissue_H3
 Different histone variants, such as H3.1/2 and H3.3, often show substantially different PTM patterns. To distinguish between histone variants in the dataset used above, the `prepPTMdata()` function has a `histvars =` option, which keeps the input proteoform abundances based on histone variants if set to `TRUE`.
 
 ```{r}
-histvar_data <- prepPTMdata(csv = "../data/mouse-tissues_ctdb_timerep_4timepoints.csv", histvars = TRUE, avrepls = TRUE)
-histvar_data$cell.type...tissue <- gsub(".*, ", "", histvar_data$cell.type...tissue)
-histvar_data$cell.type...tissue <- paste0(toupper(substr(histvar_data$cell.type...tissue, 1, 1)),
-                                  substr(histvar_data$cell.type...tissue, 2, nchar(histvar_data$cell.type...tissue)))
+histvar_data <- prepPTMdata(mytable, histvars = TRUE, avrepls = TRUE)
+histvar_data$tissue <- gsub(".*, ", "", histvar_data$tissue)
+histvar_data$tissue <- paste0(toupper(substr(histvar_data$tissue, 1, 1)),
+                                  substr(histvar_data$tissue, 2, nchar(histvar_data$tissue)))
 head(histvar_data)
 ```
 
@@ -125,16 +127,11 @@ CrossTalkMap(histvar_ptm_ab_pos_mod,
              splitplot_by = "tissue", connected = "timepoint", group_by = "repl",
              connect_dots = TRUE, with_arrows = TRUE, colcode = "pj", which_label = "mimj",
              contour_lines = TRUE, contour_labels = "short",
-             filename_string = "K9-K27_all-ptms_me", filename_ext = "pdf",
+             filename_string = "K9-K27_all-ptms_me", filename_ext = "png",
              outdir = "plots/histvars/crosstalkmaps/")
 ```
 
 ```{r, echo=FALSE}
 knitr::include_graphics("./plots/histvars/crosstalkmaps/crosstalkmap_splitby-tissue_histvars_K9-K27_all-ptms_me.png")
-```
-
-```{r, echo=FALSE, eval=FALSE}
-# pdf to png for knitr::include_graphics
-for i in *.pdf; do pdftoppm $i ${i%.pdf} -png -singlefile -r 300; done
 ```
 
