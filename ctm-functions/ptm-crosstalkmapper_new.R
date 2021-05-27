@@ -136,12 +136,20 @@ sum_histvar_quants <- function(data) {
   return(sumdata)
 }
 
-prepPTMdata <- function(csv, histvars = TRUE, avrepls = TRUE) {
+prepPTMdata <- function(data_table, histvars = TRUE, avrepls = TRUE) {
   # load data derived from CrosstalkDB (or in the respective format) and remove unnecessary columns
+  # data_table can either be an R dataframe or the path to a csv file
   # normalize according to histone variants, unless histvars = FALSE (for plotting H3 total data)
   # average, unless avrepls = FALSE (for comparison of replicates)
   
-  data <- read.csv(csv, stringsAsFactors = FALSE)
+  if (is.data.frame(data_table)){
+    data <- data_table
+  }else if (is.character(data_table)){
+    data <- read.csv(data_table, stringsAsFactors = FALSE)
+  }else{
+    warning("Incorrect input data format in prepPTMdata (must be a data.frame or a path to a csv file")
+  }
+  
   okdata <- cleanup_cols(data, req_cols)
   okdata$modifications <- rename_termini(okdata$modifications)
   okdata_0 <- zero_imp(okdata)
