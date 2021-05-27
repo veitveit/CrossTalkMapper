@@ -1,7 +1,10 @@
 ---
 title: "PTM-CrossTalkMapper"
 subtitle: Documentation and Common Use Cases
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
 ---
 
 In the first example case, we would like to explore the development of histone H3 PTM abundances and crosstalk with age and compare between four mouse tissues.
@@ -15,8 +18,8 @@ The code included in this document can be found as a coherent R scripts [here](h
 Set the working directory and import the PTM-CrossTalkMapper functions.
 
 ```{r, eval=FALSE}
-setwd(dirname(dirname(rstudioapi::getSourceEditorContext()$path)))
-source("../ctm-functions/ptm-crosstalkmapper_new.R")
+setwd("/path/to/CrossTalkMapper/doc/")
+source("../ctm-functions/ptm-crosstalkmapper.R")
 ```
 
 ## Data Preparation
@@ -133,5 +136,10 @@ CrossTalkMap(histvar_ptm_ab_pos_mod,
 
 ```{r, echo=FALSE}
 knitr::include_graphics("./plots/histvars/crosstalkmaps/crosstalkmap_splitby-tissue_histvars_K9-K27_all-ptms_me.png")
+```
+
+```{r, echo=FALSE, eval=FALSE}
+# pdf to png for knitr::include_graphics
+for i in *.pdf; do pdftoppm $i ${i%.pdf} -png -singlefile -r 300; done
 ```
 
