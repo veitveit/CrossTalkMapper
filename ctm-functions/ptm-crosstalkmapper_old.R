@@ -1,56 +1,23 @@
 library(tidyr)
 library(tools)
-library(gtools)
 library(ggplot2)
 library(scales)
 library(metR)
 library(ggrepel)
 library(gridExtra)
+
 # sample = one combination of tissue + timepoint/any conditions (+ replicate before averaging)
 # for each sample, all quantifications have to add up to 1
-
-##########################
-## Hard-coded specifics ##
-##########################
-
-# columns required in the input file
-# TODO: specify respective column names here
-req_cols <- c("protein.name","tissue","modifications","quantification", "timepoint", "biological.replicate")
-
-
-### TODO? Outsource all functions?
 
 #########################
 ## Data Pre-processing ##
 #########################
 
-cleanup_cols <- function(data, req_cols) {
-  # remove unnecessary columns from CrosstalkDB-derived peptide data
-  all_cols <- colnames(data)
-  rm_cols <- setdiff(all_cols, req_cols)
-  data[, rm_cols] <- list(NULL)
+cleanup_ctdb <- function(data) {
+  # remove unnecessary columns from CrosstalkDB-derived .csv files
+  data[, c("X", "accession.number", "species", "number.of.modifications", "date", "user", "MS.resolution", "Link.to.original.data",
+             "peptide.Sequence", "dataset.id")] <- list(NULL)
   return(data)
-}
-
-rename_termini <- function(mods) {
-  ## Input: mods is a vector of modifications.
-  ## Output: vector of modifications where leading and trailing modifications without positional information
-  ## (N- and C-terminal modifications) are prepended by "M0" and "C9999", resp.
-  ## (e.g. "acK14acac" --> "M0acK14acC9999ac").
-  ## Assumes that modification identifiers are either
-  ## 2 lowercase letters with (me1) our without a trailing digit (ac) or
-  ## 3 lowercase letters without trailing digit (cit). Also see CrosstalkDB's Table of modifications.
-  ambig_termini <- grep("^[a-z]{2,}\\d*$", mods, value = TRUE)
-  if (length(ambig_termini) > 0) {
-    # if a histone carries only a single terminal modification, terminus cannot be determined 
-    warning(paste("The following individual modifications are assumed to be N-terminal modifications:",
-                  paste(ambig_termini, collapse = ", "),
-                  "If this is incorrect, please denote N-terminal modifications as M0<mod>",
-                  "and C-terminal modifications similarly as <aminoacid><position><mod> in the input.", sep = "\n"))
-  }
-  mods_n <- gsub("^([a-z]+\\d*)", "M0\\1", mods)
-  mods_n_c <- gsub("([a-z]{2,}\\d*)([a-z]{2,}\\d*)$", "\\1C9999\\2", mods_n)
-  return(mods_n_c)
 }
 
 zero_imp <- function(data) {
@@ -60,14 +27,14 @@ zero_imp <- function(data) {
   # (quantification = 0 if not measured)
   # only combinations of tissue, timepoint and replicate that actually exist in the dataset are included
   # (relevant in case of differing samples numbers for different conditions, e.g. fewer time points for a subset of tissues)
-  data_0 <- complete(data, nesting(tissue, timepoint, biological.replicate), protein.name, modifications,
+  data_0 <- complete(data, nesting(cell.type...tissue, timepoint, biological.replicate), protein.name, modifications,
                      fill = list(quantification = 0))
   return(data_0)
 }
 
 av_repls <- function(data) {
   # average replicates
-  avdata <- aggregate(data$quantification, by = data[c("tissue", "timepoint", "protein.name", "modifications")], mean)
+  avdata <- aggregate(data$quantification, by = data[c("cell.type...tissue", "timepoint", "protein.name", "modifications")], mean)
   names(avdata)[names(avdata) == 'x'] <- "quantification"
   avdata$biological.replicate <- "av"
   return(avdata)
@@ -79,8 +46,8 @@ histvarquant <- function(data) {
   histvarquants_n <- 0
   for (histvar in unique(data$protein.name)) {
     histvardat <- data[data$protein.name == histvar, ]
-    for (tissue in unique(data$tissue)) {
-      tisdat <- histvardat[histvardat$tissue == tissue, ]
+    for (tissue in unique(data$cell.type...tissue)) {
+      tisdat <- histvardat[histvardat$cell.type...tissue == tissue, ]
       for (timepoint in unique(data$timepoint)) {
         timedat <- tisdat[tisdat$timepoint == timepoint, ]
         for (repl in unique(data$biological.replicate)) {
@@ -96,7 +63,7 @@ histvarquant <- function(data) {
       }
     }
   }
-  colnames(histvarquants) <- c("protein.name", "tissue", "timepoint", "histvarquant", "biological.replicate")
+  colnames(histvarquants) <- c("protein.name", "cell.type...tissue", "timepoint", "histvarquant", "biological.replicate")
   return(histvarquants)
 }
 
@@ -110,52 +77,26 @@ norm_by_histvar <- function(data) {
   return(adj_data)
 }
 
-extract_histnames <- function(histvar_names) {
-  # assumes histvar_names contain common histone symbols the form of "H3.3" or "H2A.X"
-  # removes the specifiers of the histone variants to get the respective histone names for labels after averaging
-  # i.e. find "Hx" or "Hxx" and remove the following ".x"
-  ## alternatively for uncommon cases: let the name be specified as argument
-  hist_names <- gsub("(H\\w{1,3})\\.\\w", "\\1", histvar_names)
-  return(hist_names)
-}
-
 sum_histvar_quants <- function(data) {
-  # for each sample, sum up quantifications of both histone variants to get values for histone total
+  # for each sample, sum up quantifications of both histone variants to get values for H3 total
   sumdata <- aggregate(data$quantification,
-                       by = data[c("tissue", "modifications", "timepoint", "biological.replicate")], sum)
+                       by = data[c("cell.type...tissue", "modifications", "timepoint", "biological.replicate")], sum)
   names(sumdata)[names(sumdata) == 'x'] <- "quantification"
-  # extract histone name from variants
-  histname <- unique(extract_histnames(unique(data$protein.name)))
-  if (length(histname) == 1) {
-    sumdata$protein.name <- histname
-  } else {
-    # if histone name cannot be extracted, assign first protein name to all
-    sumdata$protein.name <- head(data$protein.name, n = 1)
-    warning("Could not extract a common histone name from histone variants. Please make sure your protein names contain the histone identifier in the form of \"Hx.x\" or \"Hxx.x\" (e.g. \"H3.3\" or \"H2A.X\").")
-  }
+  sumdata$protein.name <- "H3"
   return(sumdata)
 }
 
-prepPTMdata <- function(data_table, histvars = TRUE, avrepls = TRUE) {
+prepPTMdata <- function(csv, histvars = TRUE, avrepls = TRUE) {
   # load data derived from CrosstalkDB (or in the respective format) and remove unnecessary columns
-  # data_table can either be an R dataframe or the path to a csv file
   # normalize according to histone variants, unless histvars = FALSE (for plotting H3 total data)
   # average, unless avrepls = FALSE (for comparison of replicates)
   
-  if (is.data.frame(data_table)){
-    data <- data_table
-  }else if (is.character(data_table)){
-    data <- read.csv(data_table, stringsAsFactors = FALSE)
-  }else{
-    warning("Incorrect input data format in prepPTMdata (must be a data.frame or a path to a csv file")
-  }
-  
-  okdata <- cleanup_cols(data, req_cols)
-  okdata$modifications <- rename_termini(okdata$modifications)
+  data <- read.csv(csv, stringsAsFactors = FALSE)
+  okdata <- cleanup_ctdb(data)
   okdata_0 <- zero_imp(okdata)
   
   if (histvars == TRUE) {
-    adj_data <- norm_by_histvar(okdata_0)             
+    adj_data <- norm_by_histvar(okdata_0)
   } else {
     adj_data <- sum_histvar_quants(okdata_0)
   }
@@ -175,71 +116,7 @@ prepPTMdata <- function(data_table, histvars = TRUE, avrepls = TRUE) {
 ## PTM abundance calculation ##
 ###############################
 
-pi_trans_eq <- function(pi, pj, pij) {
-  # calculate transformed abundance for pi
-  # pi, pij != 0; pj != 1; pi != pij
-  return(pi * (pi - pij) / ((1-pj) * pij))
-}
-
-pj_trans_eq <- function(pi, pj, pij) {
-  # calculate transformed abundance for pj
-  # pj, pij != 0; pi != 1; pj != pij
-  return(pj * (pj - pij) / ((1-pi) * pij))
-}
-
-calc_trans_ab <- function(pi, pj, pij, tol = 0.00000000001) {
-  # calculate transformed individual abundances pi_trans and pj_trans, taking all special cases into consideration
-  if (isTRUE(all.equal(pi, 0, tolerance = tol)) | isTRUE(all.equal(pj, 0, tolerance = tol))) {
-    # at least one PTM is not present at all --> co-occurrence not defined (as opposed to pij = 0 when both PTMs are present)
-    pi_trans <- pj_trans <- NaN
-  } else if (isTRUE(all.equal(pij, 0, tolerance = tol))) {
-    # k/0
-    pi_trans <- pj_trans <- Inf
-  } else if (isTRUE(all.equal(pi, pj, tolerance = tol)) & isTRUE(all.equal(pi, pij, tolerance = tol))) {
-    # all three abundances equal
-    if (isTRUE(all.equal(pi, 1, tolerance = tol))) {
-      # both modifications on all histones (0/0)
-      pi_trans <- pj_trans <- NaN
-    } else {
-      # perfect co-occurrence on fewer than all histones (0/k)
-      pi_trans <- pj_trans <- 0
-    }
-  } else if (isTRUE(all.equal(pi, pij, tolerance = tol))) {
-    # one individual abundance is equal to co-occurrence
-    if (isTRUE(all.equal(pj, 1, tolerance = tol))) {
-      # other modification on all histones
-      pi_trans <- NaN     # 0/0
-      pj_trans <- pj_trans_eq(pi, pj, pij)
-    } else if (isTRUE(all.equal(pi, 1, tolerance = tol)) | isTRUE(all.equal(pij, 1, tolerance = tol))) {
-      # then pij is also 1, and other way around
-      pi_trans <- pj_trans <- 0
-    } else {
-      # other modification on fewer than all histones
-      pi_trans <- 0
-      pj_trans <- pj_trans_eq(pi, pj, pij)
-    }
-  } else if (isTRUE(all.equal(pj, pij, tolerance = tol))) {
-    # one individual abundance is equal to co-occurrence
-    if (isTRUE(all.equal(pi, 1, tolerance = tol))) {
-      # other modification on all histones
-      pi_trans <- pi_trans_eq(pi, pj, pij)
-      pj_trans <- NaN
-    } else if (isTRUE(all.equal(pj, 1, tolerance = tol)) | isTRUE(all.equal(pij, 1, tolerance = tol))) {
-      # then pij is also 1, and other way around
-      pi_trans <- pj_trans <- 0
-    } else {
-      # other modification on fewer than all histones
-      pi_trans <- pi_trans_eq(pi, pj, pij)
-      pj_trans <- 0
-    }
-  } else {
-    pi_trans <- pi_trans_eq(pi, pj, pij)
-    pj_trans <- pj_trans_eq(pi, pj, pij)
-  }
-  return(list("pi_trans" = pi_trans, "pj_trans" = pj_trans))
-}
-
-calcPTMab <- function(pepdata, skip_0ab = TRUE, skip_0co = TRUE, outdir = getwd()) {
+calcPTMab <- function(pepdata, outdir = getwd()) {
   
   # make list of all individual modifications present in the dataset
   modlist <- splitCombMod(pepdata$modifications)
@@ -249,8 +126,8 @@ calcPTMab <- function(pepdata, skip_0ab = TRUE, skip_0co = TRUE, outdir = getwd(
   ab_n <- 0
   for (hist in unique(pepdata$protein.name)) {
     histdat <- pepdata[pepdata$protein.name == hist, ]
-    for (tissue in unique(pepdata$tissue)) {
-      tisdat <- histdat[histdat$tissue == tissue, ]
+    for (tissue in unique(pepdata$cell.type...tissue)) {
+      tisdat <- histdat[histdat$cell.type...tissue == tissue, ]
       for (timepoint in unique(pepdata$timepoint)) {
         timedat <- tisdat[tisdat$timepoint == timepoint, ]
         for (repl in unique(pepdata$biological.replicate)) {
@@ -262,36 +139,32 @@ calcPTMab <- function(pepdata, skip_0ab = TRUE, skip_0co = TRUE, outdir = getwd(
             
             # calculate relative abundance p_i of PTM m_i
             pi <- sum(mi_combmod$quantification)
-            if (skip_0ab == TRUE & pi == 0) {
+            if (pi == 0) {
               next
             }
-            
+
             # collect all interacting individual modifications m_j (this includes m_i)
             mjs_uniq <- splitCombMod(mi_combmod$modifications)
-            
+
             for (mj in mjs_uniq) {
               
               if (mj == mi) {
                 next
               }
-              
+
               # calculate relative abundance p_j of PTM m_j
               pj <- sum(repldat[grep(mj, repldat$modifications),"quantification"])
-              if (skip_0ab == TRUE & pj == 0) {
-                next
-              }
               # calculate co-occurrence p_ij
               pij <- sum(mi_combmod[grep(mj, mi_combmod$modifications),"quantification"])
-              if (skip_0co == TRUE & pij == 0) {
+              if (pj == 0 | pij == 0) {
                 next
               }
               # transform abundances
-              trans_abs <- calc_trans_ab(pi, pj, pij)
-              pi_hat <- trans_abs$pi_trans
-              pj_hat <- trans_abs$pj_trans
+              pi_hat <- pi * (pi - pij) / ((1-pj) * pij)
+              pj_hat <- pj * (pj - pij) / ((1-pi) * pij)
               # calculate interplay score from transformed abundances
-              
               I <- I_trans(pi_hat, pj_hat)
+
               # add all values in a new row to ptm dataframe
               ab_n <- ab_n+1
               values <- list(hist, tissue, timepoint, repl, mi, pi, mj, pj, pij, pi_hat, pj_hat, I)
@@ -306,12 +179,9 @@ calcPTMab <- function(pepdata, skip_0ab = TRUE, skip_0co = TRUE, outdir = getwd(
   }
   
   colnames(ab) <- c("hist", "tissue", "timepoint", "repl", "mi", "pi", "mj", "pj", "pij", "pi_hat", "pj_hat", "I")
-  ab$tissue <- as.factor(ab$tissue)
   
-  # force write.table() to print NaN instead of NA
-  ab_print <- lapply(ab, as.character)
   # print data to file
-  write.table(ab_print, paste0(outdir, "/ptm-abundances.tab"), quote = FALSE, sep = "\t", row.names = FALSE)
+  write.table(ab, paste0(outdir, "/ptm-abundances.tab"), quote = FALSE, sep = "\t", row.names = FALSE)
   
   return(ab)
   
@@ -338,18 +208,16 @@ raster <- function(start, end) {
   return(raster_df)
 }
 
-encode <- function(data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode, shapecode = shapecode) {
+encode <- function(data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode) {
   ## what should be encoded how? needs to be given as function argument in main function (CrossTalkMap())
   # splitplot_by: individual plots for which variable? (H3/histvars: tissue, repls: time; histone variants are taken care of automatically)
   # connected: the different instances of this variable are connected / grouped (H3/histvars: time, repls: replicates)
   # group_by: data points are grouped by this variable (H3/histvars: irrelevant (implicitely replicates), repls: tissue)
   # colcode: this variable is color-coded (H3/histvars: p_j, repls: tissue)
-  #TODO add def shapecode
   data$splitplot_by <- data[[splitplot_by]]
   data$connected <- data[[connected]]
   data$group_by <- data[[group_by]]
   data$colcode <- data[[colcode]]
-  if(!is.null(shapecode)){data$shapecode <- as.integer(data[[shapecode]])}else{data$shapecode=16}
   return(data)
 }
 
@@ -411,7 +279,7 @@ ptm_combs <- function(indmods, minlen = 2, maxlen = 2) {
 
 make_point_labels <- function(data, which_label = which_label) {
   ## order data and generate labels only for the first data point in each subgroup
-  #data$timepoint <- as.numeric(gsub(" months", "", data$timepoint)) #original version for months
+  data$timepoint <- as.numeric(gsub(" months", "", data$timepoint))
   data_ordered <- data[order(data$mi, data$mj, data$tissue, data$timepoint, data$repl),]
   data_labeled <- data.frame()
   for (mi in unique(data_ordered$mi)) {
@@ -449,7 +317,7 @@ base_plot <- function(raster_df, start, end, hide_axes) {
           plot.title = element_text(size = 18, hjust = 0.5),
           plot.subtitle = element_text(hjust = 0.5),
           legend.title = element_text(size = 14),
-          legend.text = element_text(size = 10),
+          legend.text = element_text(size = 14),
           panel.background = element_rect(fill = "white"),
           panel.border = element_rect(fill = NA, colour = "black"))
   if (hide_axes == TRUE) {
@@ -463,7 +331,7 @@ base_plot <- function(raster_df, start, end, hide_axes) {
 
 add_title <- function(base_plot, mi, cond, hist, which_label) {
   # if data points are labeled with m_j only, m_i should be in the title
-  # otherwise, labels are of the form mimj, then only condition and histone type are displayed in title
+  # otherwise, labels are of the form mimj, then only condition and histone type in title
   if (which_label == "mj") {
     p <- base_plot + ggtitle(mi, subtitle = paste(cond, hist, sep = ", "))
   } else {
@@ -506,8 +374,8 @@ add_contour_labels <- function(plot, contour_breaks, raster_start, raster_end, c
   # takes a list of contour line values and labels them at the bottom and right side of the plot
   for (I in contour_breaks) {
     # calculate x and y coordinates
-    y_ab_trans <- min(trans_ab2(trans_ab1 = raster_end, I = I), raster_start)
-    x_ab_trans <- max(trans_ab2(trans_ab1 = raster_start, I = I), raster_end)
+    x_ab_trans <- max(trans_ab2(trans_ab1 = raster_end, I = I), raster_start)
+    y_ab_trans <- min(trans_ab2(trans_ab1 = raster_start, I = I), raster_end)
     # make label (short or long form)
     contour_label <- make_contour_label(I, contour_label_form = contour_label_form)
     # add label to plot
@@ -547,12 +415,12 @@ add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_schem
       p <- base_plot + scale_color_gradientn(colours = c("#00BFC4", "#1A2980", "#B06AB3"),
                                              limits = c(min(all_data$colcode), max(all_data$colcode)))
     } else {
-      warning("Unknown argument to col_scheme in add_point_col()")
+      warning("Unknown argument to col_scheme")
       return()
     }
     p <- p + guides(color = guide_colorbar(order = 1), fill = guide_colorbar(order = 2))
   } else {
-    p <- base_plot + scale_color_discrete(limits = levels(subgroup_data[,colcode]), breaks = sort(unique(subgroup_data[,colcode]))) +
+    p <- base_plot + scale_color_discrete() +
       guides(color = guide_legend(order = 1), fill = guide_colorbar(order = 2))
   }
   return(p)
@@ -560,32 +428,19 @@ add_point_col <- function(base_plot, subgroup_data, all_data, colcode, col_schem
 
 add_col_legend_label <- function(base_plot, colcode) {
   # formatting of color-code legend label
-  # assuming colcode is "pi", "pj" or "pij", returns labels as "p[xy]" in the plot legend (xy as subscript to p)
-  # otherwise, just capitalize first character
-  if (colcode == "pi" || colcode == "pj" || colcode == "pij") {
-    colcode <- gsub("p", "p_", colcode)
-  }
-  if (grepl("_", colcode) == TRUE) {
-    string_split <- strsplit(colcode, "_")
-    normalscr <- unlist(string_split)[[1]]
-    subscr <- unlist(string_split)[[2]]
-    col_label <- bquote(.(normalscr)[.(subscr)])
-  } else {
-    col_label <- paste0(toupper(substring(colcode, 1, 1)), substring(colcode, 2))
-  }
+  # assuming colcode is "pxyz", returns labels as "p[xyz]" in the plot legend (xyz as subscript to p)
+  subscr <- gsub("p", "", colcode)
+  col_label <- bquote(p[.(subscr)]) #expression(p[subscr])
   p <- base_plot + labs(color = col_label)
   return(p)
 }
 
-add_points <- function(base_plot, data, shapecode) {
+add_points <- function(base_plot, data) {
   # add data points and labels to plot
-  if(!is.null(shapecode)){data$shapecode <- factor(data$shapecode)}
-  
   p <- base_plot +
-    geom_point(data = data, mapping = aes_string(x = "pi_hat", y = "pj_hat", color = "colcode", shape = shapecode), size = 1.5) +
-    geom_text_repel(data = data, mapping = aes(x = pi_hat, y = pj_hat, label = label, color = colcode), 
-                    size = 3, segment.size = 0.025, show.legend = FALSE)+
-    labs(shape = shapecode)
+    geom_point(data = data, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 1) +
+    geom_text_repel(data = data, mapping = aes(x = pi_hat, y = pj_hat, label = label, color = colcode),
+                    size = 3, segment.size = 0.025)
   return(p)
 }
 
@@ -593,15 +448,13 @@ add_paths <- function(plot, data, with_arrows) {
   # add paths beween data points, if specified with arrows
   for (mi in sort(unique(data$mi))) {
     for (mj in sort(unique(data$mj))) {
-      for (group in unique(data$group_by)) {
-        mimj_connected <- data[data$mi == mi & data$mj == mj & data$group_by == group,]
-        # if mj present at at least two time points, connect them by arrow (or for replicates by line only)
-        if (nrow(mimj_connected) > 1 && with_arrows == TRUE) {
-          plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5,
+      mimj_connected <- data[data$mi == mi & data$mj == mj,]
+      # if mj present at at least two time points, connect them by arrow (or for replicates by line only)
+      if (nrow(mimj_connected) > 1 && with_arrows == TRUE) {
+        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5,
                                    arrow = arrow(length = unit(0.18, "cm")))
-        } else if (nrow(mimj_connected) > 1 && with_arrows == FALSE) {
-          plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5)
-        }
+      } else if (nrow(mimj_connected) > 1 && with_arrows == FALSE) {
+        plot <- plot + geom_path(data = mimj_connected, mapping = aes(x = pi_hat, y = pj_hat, color = colcode), size = 0.5)
       }
     }
   }
@@ -609,7 +462,7 @@ add_paths <- function(plot, data, with_arrows) {
 }
 
 plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_string, filename_ext) {
-  ## generate multiplot from list of plots, as well as a .tab file of the contained data
+  ## generate multiplot from list of plots, including .tab file of contained data
   ## ptm_data is used to calculate the theoretical number of individual plots, since some in the list might be empty
   
   # calculate number of multi plot columns and rows
@@ -640,17 +493,17 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
       lay <- cbind(lay, col)
     }
   }
-  p <- arrangeGrob(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
+  p <- grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay)
   
   if (is.null(filename_string)) {
     # return plot object
-    return(grid.arrange(grobs = plotlist_all, ncol = nrcols, nrow = nrrows, layout_matrix = lay))
+    return(p)
   } else {
     # determine histone type for file name
-    if (length(unique(ptm_data$hist)) == 1) {
-      filename_hist <- gsub(" ", "-", unique(ptm_data$hist))
-    } else {
+    if (nrow(ptm_data[grep('\\.', ptm_data$hist),]) > 0) {
       filename_hist <- "histvars"
+    } else {
+      filename_hist <- "H3"
     }
     
     # calculate width and height of multi plot
@@ -660,8 +513,8 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
     
     # plot
     ggsave(filename = paste0(outdir, "/crosstalkmap_splitby-", splitplot_by, "_", filename_hist, "_", filename_string, ".", filename_ext), plot = p,
-           width = plotwidth, height = plotheight)
-    
+        width = plotwidth, height = plotheight)
+
     # print values for all plotted PTMs to file
     ptm_data_sort <- ptm_data[with(ptm_data, order(hist, tissue, mj, timepoint)),]
     write.table(ptm_data_sort,
@@ -670,11 +523,10 @@ plot_all <- function(plotlist_all, ptm_data, outdir, splitplot_by, filename_stri
   }
 }
 
-CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl", shapecode = NULL,
+CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", connected = "timepoint", group_by = "repl",
                          connect_dots = TRUE, with_arrows = TRUE, which_label = "mj",
                          col_scheme = "standard", contour_lines = TRUE, contour_labels = c("short", "long"), hide_axes = TRUE,
                          filename_string = NULL, filename_ext = "pdf", outdir = getwd()) {
-
   ## take data frame with transformed PTM abundances as input
   ## crosstalk maps for all PTM combinations of m_i and m_j contained in the input data frame are plotted
   ## encoding according to splitplot_by, connected, group_by, colcode (see encode())
@@ -688,70 +540,61 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
   # define start and end for x and y scales based on min and max in pi_hat and pj_hat
   # will be the same for all plots to make them comparable
   # start cannot be 0 (this would be the case if pi = pij); therefore, find smallest value > 0 for min
-  end <- min(ptm_data$pi_hat[is.finite(ptm_data$pi_hat) & ptm_data$pi_hat > 0],
+  start <- min(ptm_data$pi_hat[is.finite(ptm_data$pi_hat) & ptm_data$pi_hat > 0],
                ptm_data$pj_hat[is.finite(ptm_data$pj_hat) & ptm_data$pj_hat > 0])
-  start <- max(ptm_data$pi_hat[is.finite(ptm_data$pi_hat)], ptm_data$pj_hat[is.finite(ptm_data$pj_hat)])
+  end <- max(ptm_data$pi_hat[is.finite(ptm_data$pi_hat)], ptm_data$pj_hat[is.finite(ptm_data$pj_hat)])
   
   # generate data for rasterplot
-  raster_df <- raster(start,end)
-
-  # what should be encoded how? copy respective columns
-  ptm_data <- encode(ptm_data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode, shapecode = shapecode)
- 
+  raster_df <- raster(start, end)
   
+  # what should be encoded how? copy respective columns
+  ptm_data <- encode(ptm_data, splitplot_by = splitplot_by, connected = connected, group_by = group_by, colcode = colcode)
+
   # print all x plots (histone (variants) * 4 tissues) on one page
   plotlist_all <- list()
   plot_count_all <- 0
-  
-  #Verify that 'mi' contain one PTM if which_label is set to 'mj'
-  if(length(unique(ptm_data$mi)) > 1 & which_label != "mimj"){
-    message(paste0("WARNING: 'which_label' has been set to '", which_label, "', however dataset contains more than one modification type in 'mi': 'which_label' has been set to 'mimj'"))
-    which_label = "mimj"
-  }else{
-    mi = unique(ptm_data$mi)[1]
-  }
-  
+
   # iterate over individual conditions, making one plot for each
-  for (cond in mixedsort(unique(ptm_data[[splitplot_by]]))) {
+  for (cond in unique(ptm_data[[splitplot_by]])) {
     split_plot <- ptm_data[ptm_data[[splitplot_by]] == cond, ]
     for (hist in unique(ptm_data$hist)) {
+
       hist_plot <- split_plot[split_plot$hist == hist, ]
-      if (nrow(hist_plot) > 0) {
-        plot_count_all <- plot_count_all + 1
-        
-        # make labels and order data accordingly
-        hist_labeled <- make_point_labels(hist_plot, which_label = which_label)
-        # make raster plot
-        p <- base_plot(raster_df, start, end, hide_axes = hide_axes)
-        # add title
-        p <- add_title(p, mi, cond, hist, which_label)
-        # add color scale for interplay score / raster plot
-        p <- add_interplay_col(p, col_scheme)
-        # add interplay score contour lines
-        if (contour_lines == TRUE) {
-          contour_label_form <- match.arg(contour_labels)
-          p <- add_contours(p, raster_df, raster_start = start, raster_end = end, contour_label_form = contour_label_form)
-        }
-        # determine which color scale to add for data points
-        p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
-        # format color-code legend label
-        p <- add_col_legend_label(p, colcode)
-        # add data points and labels
-        p <- add_points(p, hist_labeled,shapecode)
-        # add paths between points
-        if (connect_dots == TRUE) {
-          p <- add_paths(p, hist_labeled, with_arrows)
-        }
-        
-        # add plot to list
-        plotlist_all[[plot_count_all]] <- p
+      plot_count_all <- plot_count_all + 1
+
+      # make labels and order data accordingly
+      hist_labeled <- make_point_labels(hist_plot, which_label = which_label)
+      # make raster plot
+      p <- base_plot(raster_df, start, end, hide_axes = hide_axes)
+      # add title
+      p <- add_title(p, mi, cond, hist, which_label)
+      # add color scale for interplay score / raster plot
+      p <- add_interplay_col(p, col_scheme)
+      # add interplay score contour lines
+      if (contour_lines == TRUE) {
+        contour_label_form <- match.arg(contour_labels)
+        p <- add_contours(p, raster_df, raster_start = start, raster_end = end, contour_label_form = contour_label_form)
       }
+      # determine which color scale to add for data points
+      p <- add_point_col(p, subgroup_data = hist_labeled, ptm_data, colcode, col_scheme)
+      # format color-code legend label
+      p <- add_col_legend_label(p, colcode)
+      # add data points and labels
+      p <- add_points(p, hist_labeled)
+      # add paths between points
+      if (connect_dots == TRUE) {
+        p <- add_paths(p, hist_labeled, with_arrows)
+      }
+
+      # add plot to list
+      plotlist_all[[plot_count_all]] <- p
+
     }
   }
-  
-  # generate multiplot from list of plots, as well as .tab of all data points contained in the plot
+
+  # generate multiplot from list of plots, incl .tab of all data points contained in the plot
   plot_all(plotlist_all, ptm_data, outdir, splitplot_by, filename_string, filename_ext)
-  
+
 }
 
 ################
@@ -760,130 +603,79 @@ CrossTalkMap <- function(ptm_data, splitplot_by = "tissue", colcode = "pj", conn
 
 ## For the standard case (over time in each tissue)
 
-line_ab <- function(data, connected, label="", outdir = getwd()) {
-  ## line plot for abundance change over column values of "connected"
-  ## layout for manual integration into crosstalk map
-  data <- data[order(data[[connected]]),]
-  data$connected <- data[[connected]]
-  
+line_ab <- function(data, outdir = getwd()) {
+  ## line plot for abundance change over time
+  ## layout for manual integration into crosstalk map, hence no tissue / histone variant labels
+  data$timepoint_nr <- as.numeric(gsub(" months", "", data$timepoint))
+  data <- data[order(data$timepoint_nr),]
+  tissue <- unique(data$tissue)
+  hist <- unique(data$hist)
+  if (length(tissue) > 1 || length(hist) > 1) {
+    warning("Provide data for only one tissue and histone (variant)!")
+    return()
+  }
   # plot
-  pdf(paste0(outdir, "ab_", unique(data$mi), "_", label, ".pdf"), height = 4.7) 
-  p <- ggplot(data, aes(connected, pi, group=hist, colour=hist)) +
+  pdf(paste0(outdir, "/ab_", unique(data$mi), "_", tissue, "_", sub(" ", "-", hist), ".pdf"), height = 4.7)
+  p <- ggplot(data, aes(timepoint_nr, pi)) +
     geom_line(size = 1.5) +
-    geom_point(size = 2) +
-    labs(x = unique(label), y = paste(unique(data$mi), "abundance")) +
-    scale_x_discrete(breaks = unique(data[[connected]]), labels = unique(data[[connected]])) +
+    geom_point(size = 4) +
+    labs(x = "Months", y = paste(unique(data$mi), "abundance")) +
+    scale_x_continuous(breaks = data$timepoint_nr, labels = data$timepoint_nr) +
     # to prevent some y tick labels to be cut off (although it still cuts off in one or the other case)
     scale_y_continuous(limits = c(min(data$pi), max(data$pi) + ((max(data$pi)-min(data$pi))/100))) +
     theme_classic() +
-    theme(text = element_text(size = 15), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    theme(text = element_text(size = 30)) +
     coord_cartesian(clip = "off")
+  print(p)
   dev.off()
 }
 
-line_ct <- function(data, connected, label="", outdir = getwd()) {
+line_ct <- function(data, outdir = getwd()) {
   ## line plot for changes of abundances, co-occurrences and interplay score over time for PTM pair in one tissue
   ## if no defined Interplay score at an individual time point, all other measures are plotted,
   ## but the interplay score data point is missing
-  data$connected <- data[[connected]]
-  data <- data[order(data$connected),]
+  data$timepoint_nr <- as.numeric(gsub(" months", "", data$timepoint))
+  data <- data[order(data$timepoint_nr),]
+  tissue <- unique(data$tissue)
   hist <- unique(data$hist)
-  # plot
-  pdf(paste0(outdir, "ct-params_", data$mi, data$mj, "_", label, ".pdf"))
-  par(xpd = TRUE, mar = c(7,4,2,5), cex=0.9)
-  datah <- data[data$hist == hist[1], ]
-  plot(as.numeric(datah$connected), datah$pi, type = "b", col = "orange", lwd = 2,
-       ylim = c(0, max(c(data$pi, data$pj), na.rm=T)),
-       #xlim = as.numeric(datah$connected),  
-       xlab = label, ylab = "Abundances", xaxt = "n", main=paste(data$mi[1], "and", data$mj[1]))
-  #  title(paste0(toupper(substr(tissue, 1, 1)), substr(tissue, 2, nchar(tissue)), ", ", hist), line = 0.4)
-  axis(side = 1, at = datah$connected, labels = datah$connected)
-  lines(datah$connected, datah$pj, type = "b", col = "blue", lwd = 2)
-  lines(datah$connected, datah$pij, type = "b", col = "red", lwd = 2)
-  if (length(hist) > 1) {
-    for (h in 2:length(hist)) {
-      datah <- data[data$hist == hist[h],]
-      lines(datah$connected, datah$pi, col = "orange", lwd = 2, lty=h)
-      lines(datah$connected, datah$pj, type = "b", col = "blue", lwd = 2, lty=h)
-      lines(datah$connected, datah$pij, type = "b", col = "red", lwd = 2, lty=h)
-    }
+  if (length(tissue) > 1 || length(hist) > 1) {
+    warning("Provide data for only one tissue and histone (variant)!")
+    return()
   }
-  
+  # plot
+  pdf(paste0(outdir, "/ct-params_", data$mi, data$mj, "_", tissue, "_", sub(" ", "-", hist), ".pdf"))
+  par(xpd = TRUE, mar = c(6,5,2,5))
+  plot(data$timepoint_nr, data$pi, type = "b", col = "orange", lwd = 2,
+       xlim = c(min(data$timepoint_nr), max(data$timepoint_nr)), ylim = c(0, max(c(data$pi, data$pj))),
+       xlab = "Months", ylab = "Abundances", xaxt = "n")
+  title(paste0(toupper(substr(tissue, 1, 1)), substr(tissue, 2, nchar(tissue)), ", ", hist), line = 0.4)
+  axis(side = 1, at = data$timepoint_nr)
+  lines(data$timepoint_nr, data$pj, type = "b", col = "blue", lwd = 2)
+  lines(data$timepoint_nr, data$pij, type = "b", col = "red", lwd = 2)
   # if interplay score is not defined in any sample (i.e. pi_hat or pj_hat = 0 in all samples),
   # then pi or pj == pij in all samples, and no defined axis limits for score
   # in that case, don't plot score axis and indicate which abundance equals co-occurrence
-  
-  
-
-  data$I[!is.finite(data$I)] <- NA
-
-  if (all(data$pi_hat == 0) || all(data$pj_hat == 0) || all(is.na(data$I)) ) {
+  if (all(data$pi_hat == 0) || all(data$pj_hat == 0)) {
     if (all(data$pi_hat == 0)) {
       equal_pij <- unique(data$mi)
     } else if (all(data$pj_hat == 0)) {
       equal_pij <- unique(data$mj)
-    }else{
-      equal_pij <- "Error"
     }
     mtext(side = 3, line = -1.2, adj = 0.95, paste0("freq(", equal_pij, ") == freq(", unique(data$mi), unique(data$mj), ")"))
   } else {
     par(new = T)
-    datah <- data[data$hist == hist[1], ]
-    interplays <- unique(datah[,c("connected","I"),])
-
-    plot(as.numeric(interplays$connected), interplays$I, type = "b", col = "black", lwd = 2,
-         #xlim = c(min(data$connected), max(data$connected)),
-         axes = F, xlab = NA, ylab = NA, ylim=range(data$I,na.rm=T), pch=2)
+    plot(data$timepoint_nr, data$I, type = "b", col = "black", lwd = 2,
+         xlim = c(min(data$timepoint_nr), max(data$timepoint_nr)),
+         axes = F, xlab = NA, ylab = NA)
     axis(side = 4)
     mtext(side = 4, line = 3, "Interplay Score")
-    if (length(hist) > 1) {
-      for (h in 2:length(hist)) {
-        datah <- data[data$hist == hist[h],]
-        lines(datah$connected, datah$I, type="b", col = "black", lwd = 2, lty=h,pch=2)
-      }
-    }
   }
   legend("bottom", inset = c(0, -0.225), horiz = TRUE, lty = "solid",
          col = c("orange", "blue", "red", "black"), lwd = 2,
-         legend = c(data$mi[1], data$mj[1], paste0(data$mi[1], data$mj[1]), "Interplay"), bty = "n", pch=rep(1,4))
-  if (length(hist) > 1)
-    legend("top", legend=hist, lty=1:length(hist), pch=rep(2,length(hist)))
+         legend = c(data$mi[1], data$mj[1], paste0(data$mi[1], data$mj[1]), "Interplay"), bty = "n")
   dev.off()
 }
 
-
-heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", title_of_plot = "",
-                        label="", outdir = getwd()) {
-  ## function to create heatmaps with a sidebar that shows the different categories 
-  # showSidebar: category to show with clustered heatmap
-  # hscale: used scaling: none, row or column
-  # title_of_plot
-  # label: label to be added to pdf-file
-  # outdir: folder to place pdf-file
-  
-  rownames(flat_matrix) <- flat_matrix[,1]
-  flat_matrix <- flat_matrix[,2:ncol(flat_matrix)]
-  flat_matrix <- as.matrix(flat_matrix)
-  flat_matrix[!is.finite(flat_matrix)] <- NA
-  flat_matrix <- flat_matrix[rowSums(!is.na(flat_matrix)) > ncol(flat_matrix) / 2, ]
-  
-  # Decide which features will be shown as side bar
-  colvec <- vector(,ncol(flat_matrix))
-  tfeatures <- unique(ptm_ab[[showSidebar]])
-  for (i in 1:length(tfeatures)) {
-    colvec[grep(tfeatures[i], colnames(flat_matrix))] <- i
-  }
-  
-  pdf(paste0(outdir, "heatmap_all_", label, ".pdf"))
-  
-  
-  heatmap.2(as.matrix(flat_matrix), Rowv = T, Colv = T, cexRow = 1.0, cexCol = 1,
-            main = title_of_plot, cex.main = .5, trace = "none",
-            scale = hscale, col=bluered(100), density.info = "density", 
-            ColSideColors = rainbow(length(colvec))[colvec], srtCol=45, margins=c(13,8))
-  
-  dev.off()
-}
 
 ###############
 ## Utilities ##
@@ -897,19 +689,14 @@ splitCombMod <- function(comblist){
   return(mod_uniq)
 }
 
-I_trans <- function(pi_t, pj_t){
-  # calculates the interplay score from transformed individual PTM abundances pi_t and pj_t
-  return(log(1 / (pi_t * pj_t)))
+I_trans <- function(p_i_t, p_j_t, epsilon = 0.00000000001){
+  # calculates the interplay score from transformed individual PTM abundances p_i_t and p_j_t
+  if(abs(p_i_t) < epsilon || abs(p_j_t) < epsilon){
+    return(NaN)
+  } else {
+    return(log(1 / (p_i_t * p_j_t)))
+  }
 }
-
-# I_trans <- function(p_i_t, p_j_t, epsilon = 0.00000000001){
-#   # calculates the interplay score from transformed individual PTM abundances p_i_t and p_j_t
-#   if (abs(p_i_t) < epsilon || abs(p_j_t) < epsilon){
-#     return(NaN)
-#   } else {
-#     return(log(1 / (p_i_t * p_j_t)))
-#   }
-# }
 
 log_seq <- function(lbound, ubound, stepnr) {
   # generates a sequence equally spaced on logarithmic scale from lower bound to upper bound with x steps
@@ -928,4 +715,3 @@ base_breaks <- function(n = 10){
     axisTicks(log10(range(x, na.rm = TRUE)), log = TRUE, n = n)
   }
 }
-
