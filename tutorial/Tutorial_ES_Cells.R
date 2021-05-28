@@ -147,7 +147,7 @@ heatmap_all(
 #-Heatmap of Co-occurring modification frequencies-#
 
 ## Prepare data
-plotdat <- unique(ptm_ab_hist[, c("hist", "tissue", "timepoint", "repl", "mi", "mj", "pi", "pij", "I")])
+plotdat <- unique(ptm_ab[, c("hist", "tissue", "timepoint", "repl", "mi", "mj", "pi", "pij", "I")])
 plotdat$mij <- paste(plotdat$mi, plotdat$mj, sep = "")
 flat_matrix <-
   reshape2::dcast(plotdat,
@@ -167,6 +167,7 @@ heatmap_all(
 #-Heatmap of Interplay scores-#
 
 ## Prepare data
+ptm_ab_hist = ptm_ab[grepl("H3.1", ptm_ab$hist),]
 plotdat <- unique(ptm_ab_hist[, c("hist", "tissue", "timepoint", "repl", "mi", "mj", "pi", "pij", "I")])
 plotdat$mij <- paste(plotdat$mi, plotdat$mj, sep = "")
 flat_matrix <-
