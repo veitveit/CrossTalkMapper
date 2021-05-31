@@ -6,6 +6,8 @@ library(scales)
 library(metR)
 library(ggrepel)
 library(gridExtra)
+library(ggsci)
+
 # sample = one combination of tissue + timepoint/any conditions (+ replicate before averaging)
 # for each sample, all quantifications have to add up to 1
 
@@ -136,7 +138,22 @@ sum_histvar_quants <- function(data) {
   return(sumdata)
 }
 
+
+
 prepPTMdata <- function(data_table, histvars = TRUE, avrepls = TRUE) {
+  #' prepPTMdata()
+  #' 
+  #' Load the data derived from CrosstalkDB (or in the respective format) and remove unnecessary columns
+  #'
+  #' @param a This param does this
+  #' @param aze that
+  #' 
+  #' @return something
+  #' 
+  #' @usage feziohfipoze
+
+  
+  
   # load data derived from CrosstalkDB (or in the respective format) and remove unnecessary columns
   # data_table can either be an R dataframe or the path to a csv file
   # normalize according to histone variants, unless histvars = FALSE (for plotting H3 total data)
@@ -169,6 +186,9 @@ prepPTMdata <- function(data_table, histvars = TRUE, avrepls = TRUE) {
   return(adj_data)
   
 }
+
+
+
 
 
 ###############################
@@ -876,11 +896,11 @@ heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", titl
   
   pdf(paste0(outdir, "heatmap_all_", label, ".pdf"))
   
-  
-  heatmap.2(as.matrix(flat_matrix), Rowv = T, Colv = T, cexRow = 1.0, cexCol = 1,
+  print(colvec)
+  heatmap.2(as.matrix(flat_matrix), Rowv = T, Colv = T, cexRow = 0.8, cexCol = 1,
             main = title_of_plot, cex.main = .5, trace = "none",
             scale = hscale, col=bluered(100), density.info = "density", 
-            ColSideColors = rainbow(length(colvec))[colvec], srtCol=45, margins=c(13,8))
+            ColSideColors = pal_futurama()(length(colvec))[colvec], srtCol=45, margins=c(13,8))
   
   dev.off()
 }
