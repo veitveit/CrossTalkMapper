@@ -895,8 +895,7 @@ heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", titl
   }
   
   pdf(paste0(outdir, "heatmap_all_", label, ".pdf"))
-  
-  print(colvec)
+ 
   heatmap.2(as.matrix(flat_matrix), Rowv = T, Colv = T, cexRow = 0.8, cexCol = 1,
             main = title_of_plot, cex.main = .5, trace = "none",
             scale = hscale, col=bluered(100), density.info = "density", 
