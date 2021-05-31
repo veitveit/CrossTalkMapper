@@ -24,7 +24,8 @@ packages <-
     "forcats",
     "ggrepel",
     "gridExtra",
-    "dplyr"
+    "dplyr",
+    "paletteer"
   )
 
 ##If packages are missing run following lines
@@ -66,7 +67,7 @@ mytable$tissue <- mytable$cell.type...tissue  # Duplicate the column "cell.type.
 write.csv(mytable, "t.csv") # Save the formatted dataframe in csv as "t.csv"
 
 ## Prepare the formatted PTM data frame for the computation of PTM abundances and interplay score
-data <- prepPTMdata("t.csv",
+data <- prepPTMdata(csv="t.csv",
                     histvars = TRUE, # histvars=TRUE is you wish to distinguish between H3.1 and H3.3. Else set to FALSE
                     avrepls = FALSE) # avrepls=TRUE is you wish to average replicates. Else set to FALSE
 
@@ -223,9 +224,10 @@ CrossTalkMap(
   splitplot_by = "timepoint", # Make one crosstalk map for each time point (Irrelevant in the case of the mESCs dataset that does not contain multiple time points) 
   connected = "tissue", # Visually connect data point accross the value condition 'tissue'
   group_by = "repl", # Group replicates 
+  shapecode = "tissue",
   connect_dots = TRUE, # Visually connect data points of a PTM pair accross conditions  
   with_arrows = FALSE, # Use arrow in connection lines  
-  colcode = "pj", # Variable to be color encoded ('pi' 'pj' or 'pij')
+  colcode = "pij", # Variable to be color encoded ('pi' 'pj' or 'pij')
   which_label = "mimj", # Data points' labels to be diplayed in the crosstalk map ('mj', 'mij')
   contour_lines = TRUE, # Display Interplay score lines 
   contour_labels = "short", 
@@ -242,14 +244,10 @@ CrossTalkMap(
 ###=- TASK 3.4 -=###
 #-Crosstalk maps and PTM abundance/interplay lineplot-#
 
-##################################################
-## ALL INTERACTIONS BETWEEN 2 SELECTED POSITIONS ##
-## BOTH AS WELL AS ONLY ONE SPECIFIC MODIFICATION TYPE ##
-#########################################################
 
-
-## TODO Again one can decide about which combinations are of interest to see respective plots
-# selected pair-wise combinations
+# Define a list a pairwise combinations of PTMs that will be used to filter the dataframe of PTM abundances.
+# For each pair of PTMs a subset dataframe will be created by filtering out rows based on values in the column 'mi'
+# matching the first term in a pair and values in the column 'mj' matching the second term of a pair. 
 pos_combs <- list(c("K27me1", "K"), c("K27me2", "K"), c("K27me3", "K"))
 
 ## TODO explain what parameters connected, group_by and splitplot_by mean here
@@ -287,15 +285,13 @@ for (pos_comb in pos_combs) {
   
   # Find 10 most abundant m_j and subset data frame
   ptm_ab_mi_ordered <- ptm_ab_pos_mod[order(-ptm_ab_pos_mod$pj), ]
-  ptm_ab_mi_uniqmj <-
-    ptm_ab_mi_ordered[!duplicated(ptm_ab_mi_ordered$mj), ]
+  ptm_ab_mi_uniqmj <- ptm_ab_mi_ordered[!duplicated(ptm_ab_mi_ordered$mj), ]
   ptm_ab_mi_topab <- head(ptm_ab_mi_uniqmj, n = 10)
   topab_mj <- ptm_ab_mi_topab[, "mj"]
-  ptm_ab_pos_mod_top <-
-  ptm_ab_pos_mod[grep(paste(topab_mj, collapse = "|"), ptm_ab_pos_mod$mj),]
+  ptm_ab_pos_mod_top <- ptm_ab_pos_mod[grep(paste(topab_mj, collapse = "|"), ptm_ab_pos_mod$mj),]
   
   # Retain data for WT and Suz12-/- conditions only 
-  ptm_ab_pos_mod_top_cond <- ptm_ab_pos_mod[grepl(c("mESCs|mESCs Suz12-/-"), ptm_ab_pos_mod$tissue), ]
+  ptm_ab_pos_mod_top_cond <- ptm_ab_pos_mod_top[grepl(c("mESCs|mESCs Suz12-/-"), ptm_ab_pos_mod_top$tissue), ]
   
   # Plot top 10 most abundant PTM pair
   CrossTalkMap(
