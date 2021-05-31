@@ -6,8 +6,7 @@ library(scales)
 library(metR)
 library(ggrepel)
 library(gridExtra)
-library(ggsci)
-
+library(paletteer)
 # sample = one combination of tissue + timepoint/any conditions (+ replicate before averaging)
 # for each sample, all quantifications have to add up to 1
 
@@ -140,33 +139,12 @@ sum_histvar_quants <- function(data) {
 
 
 
-prepPTMdata <- function(data_table, histvars = TRUE, avrepls = TRUE) {
-  #' prepPTMdata()
-  #' 
-  #' Load the data derived from CrosstalkDB (or in the respective format) and remove unnecessary columns
-  #'
-  #' @param a This param does this
-  #' @param aze that
-  #' 
-  #' @return something
-  #' 
-  #' @usage feziohfipoze
-
-  
-  
+prepPTMdata <- function(csv, histvars = TRUE, avrepls = TRUE) {
   # load data derived from CrosstalkDB (or in the respective format) and remove unnecessary columns
-  # data_table can either be an R dataframe or the path to a csv file
   # normalize according to histone variants, unless histvars = FALSE (for plotting H3 total data)
   # average, unless avrepls = FALSE (for comparison of replicates)
   
-  if (is.data.frame(data_table)){
-    data <- data_table
-  }else if (is.character(data_table)){
-    data <- read.csv(data_table, stringsAsFactors = FALSE)
-  }else{
-    warning("Incorrect input data format in prepPTMdata (must be a data.frame or a path to a csv file")
-  }
-  
+  data <- read.csv(csv, stringsAsFactors = FALSE)
   okdata <- cleanup_cols(data, req_cols)
   okdata$modifications <- rename_termini(okdata$modifications)
   okdata_0 <- zero_imp(okdata)
@@ -899,7 +877,7 @@ heatmap_all <- function(flat_matrix, showSidebar = "tissue", hscale="none", titl
   heatmap.2(as.matrix(flat_matrix), Rowv = T, Colv = T, cexRow = 0.8, cexCol = 1,
             main = title_of_plot, cex.main = .5, trace = "none",
             scale = hscale, col=bluered(100), density.info = "density", 
-            ColSideColors = pal_futurama()(length(colvec))[colvec], srtCol=45, margins=c(13,8))
+            ColSideColors = paletteer_d("tidyquant::tq_dark")[colvec], srtCol=45, margins=c(13,8))
   
   dev.off()
 }
