@@ -17,7 +17,6 @@ packages <-
     "tidyr",
     "gplots",
     "gtools",
-    "gtools",
     "ggplot2",
     "scales",
     "metR",
@@ -27,10 +26,11 @@ packages <-
     "dplyr",
     "paletteer"
   )
-
+  
 ##If packages are missing run following lines
-#install.packages(packages, dependencies = TRUE)
 #update.packages(ask = FALSE)
+#install.packages(setdiff(packages, rownames(installed.packages()))) 
+
 
 ##Load Packages
 invisible(lapply(packages, library, character.only = TRUE))
@@ -57,7 +57,7 @@ source("../ctm-functions/ptm-crosstalkmapper.R") #TODO change path/script
 #-Import dataset and prepare data-#
 
 ## Import the dataset downloaded from CrosstalkDb and print the start of the dataframe to see if it requires formatting column organisation and name requirements ?
-mytable <- read.csv("MouseStemCell_CrDB.csv") #import the dataset downloaded from crosstalkDB, note that the file must be located in in current working directory define in Task 1.1
+mytable <- read.csv("MouseStemCell.csv") #import the dataset downloaded from crosstalkDB, note that the file must be located in in current working directory define in Task 1.1
 head(mytable)
 
 ## Here the structure and the column names of the dataframe "my_table" are adapted to fit the requirements of the function"prepPTMdata()"  
@@ -75,7 +75,7 @@ data <- prepPTMdata(csv="t.csv",
 
 
 
-###############=- TASK 2.1 -=################
+###############=- TASK 2.2 -=################
 #-Compute PTM abundance and interplay score-#
 
 ptm_ab <- calcPTMab(data) # This function calculates abundance of individual PTMs and co-occurence of PTM pairs as well as the interplay score for these PTM pair. 
@@ -120,10 +120,10 @@ ggsave(filename = paste0("plots/ptm_distribution.pdf"), plot = p) #Save plot as 
 
 
 ##################################=- TASK 3.2 -=##########################################
-#-Heat maps of Single PTM abundance, co-occurence, interplay score and peptide abundance-#
+#-heatmaps of Single PTM abundance, co-occurence, interplay score and peptide abundance-#
 
 
-## This task presents how to create four different types of heat maps 
+## This task presents how to create four different types of heatmaps 
 ## from a dataset of PTM abundances using the function heatmap_all() of CrossTalkMapper.
 
 #-Heatmap of single PTMs abundance-#
