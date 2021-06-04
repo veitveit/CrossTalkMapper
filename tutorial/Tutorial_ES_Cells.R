@@ -62,7 +62,6 @@ head(mytable)
 
 ## Here the structure and the column names of the dataframe "my_table" are adapted to fit the requirements of the function"prepPTMdata()"  
 mytable$timepoint <- "None" # Create a column "timepoint" with "None" values 
-mytable$biological.replicate <- mytable$repl <- 1 # Create the columns "biological.replicates" and "repl" with values equal to 1
 mytable$tissue <- mytable$cell.type...tissue  # Duplicate the column "cell.type...tissue" in a column named "tissue"  
 write.csv(mytable, "t.csv") # Save the formatted dataframe in csv as "t.csv"
 
